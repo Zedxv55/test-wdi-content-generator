@@ -21,7 +21,7 @@ function readSheet(file, index = 0) {
   return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[index]], { defval: '' });
 }
 function loadProducts() { return readSheet(PRODUCT_FILE); }
-function loadTemplates() { return readSheet(VIDEO_FILE).filter(r => clean(r['ซีรีส์/Ai'])); }
+function loadTemplates() { return readSheet(VIDEO_FILE).filter(r => clean(r['à¸‹à¸µà¸£à¸µà¸ªà¹Œ/Ai'])); }
 function envStatus() {
   return { dotenvLoaded: true, openaiKeyConfigured: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_MODEL || 'gpt-5.6-luna', port: PORT };
 }
@@ -36,7 +36,7 @@ app.get('/api/meta', (q, s) => {
   s.json({ total: r.length, categories: unique(r.map(x => x.Category)), subCategories: unique(r.map(x => x['Sub Category'])), brands: unique(r.map(x => x['Car Brand'])), models: unique(r.map(x => x['Car Model'])) });
 });
 app.get('/api/templates', (q, s) => s.json(loadTemplates().map((r, i) => ({
-  id: i, name: clean(r['ซีรีส์/Ai']), type: clean(r['ประเภทงาน']), duration: clean(r['ความยาวแนะนำ']), hook: clean(r['Hook ตัวอย่าง']), content: clean(r['เนื้อหา']), cta: clean(r['CTA']), prompt: clean(r['Prompt กลางใช้ได้ทุกรูปแบบ (Google Flow - Scene ให้ AI พิจารณาเองตามความยาวที่กำหนด']), storyboard: [clean(r['Storyboard 00.00-10.00']), clean(r['10.01-20.00']), clean(r['20.01-30.00'])], imagePrompt: clean(r['Prompt image to video']), references: clean(r['Reference ที่ต้องเตรียม']), cautions: clean(r['ข้อควรระวังภาพลักษณ์/ข้อมูล']), platforms: clean(r['แพลตฟอร์ม'])
+  id: i, name: clean(r['à¸‹à¸µà¸£à¸µà¸ªà¹Œ/Ai']), type: clean(r['à¸›à¸£à¸°à¹€à¸ à¸—à¸‡à¸²à¸™']), duration: clean(r['à¸„à¸§à¸²à¸¡à¸¢à¸²à¸§à¹à¸™à¸°à¸™à¸³']), hook: clean(r['Hook à¸•à¸±à¸§à¸­à¸¢à¹ˆà¸²à¸‡']), content: clean(r['à¹€à¸™à¸·à¹‰à¸­à¸«à¸²']), cta: clean(r['CTA']), prompt: clean(r['Prompt à¸à¸¥à¸²à¸‡à¹ƒà¸Šà¹‰à¹„à¸”à¹‰à¸—à¸¸à¸à¸£à¸¹à¸›à¹à¸šà¸š (Google Flow - Scene à¹ƒà¸«à¹‰ AI à¸žà¸´à¸ˆà¸²à¸£à¸“à¸²à¹€à¸­à¸‡à¸•à¸²à¸¡à¸„à¸§à¸²à¸¡à¸¢à¸²à¸§à¸—à¸µà¹ˆà¸à¸³à¸«à¸™à¸”']), storyboard: [clean(r['Storyboard 00.00-10.00']), clean(r['10.01-20.00']), clean(r['20.01-30.00'])], imagePrompt: clean(r['Prompt image to video']), references: clean(r['Reference à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¹€à¸•à¸£à¸µà¸¢à¸¡']), cautions: clean(r['à¸‚à¹‰à¸­à¸„à¸§à¸£à¸£à¸°à¸§à¸±à¸‡à¸ à¸²à¸žà¸¥à¸±à¸à¸©à¸“à¹Œ/à¸‚à¹‰à¸­à¸¡à¸¹à¸¥']), platforms: clean(r['à¹à¸žà¸¥à¸•à¸Ÿà¸­à¸£à¹Œà¸¡'])
 }))));
 app.get('/api/products', (q, s) => {
   let r = loadProducts();
@@ -53,18 +53,18 @@ function buildPrompt(p, t) {
 app.post('/api/generate', async (q, s) => {
   try {
     const p = q.body.product;
-    if (!p) return s.status(400).json({ error: 'ไม่พบสินค้า' });
+    if (!p) return s.status(400).json({ error: 'à¹„à¸¡à¹ˆà¸žà¸šà¸ªà¸´à¸™à¸„à¹‰à¸²' });
     const ts = loadTemplates();
     const t = ts[Number(q.body.templateId) || 0];
-    if (!t) return s.status(404).json({ error: 'ไม่พบ Video Template' });
-    if (!process.env.OPENAI_API_KEY) return s.status(503).json({ error: 'ยังไม่ได้ตั้งค่า OPENAI_API_KEY ใน .env' });
+    if (!t) return s.status(404).json({ error: 'à¹„à¸¡à¹ˆà¸žà¸š Video Template' });
+    if (!process.env.OPENAI_API_KEY) return s.status(503).json({ error: 'à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² OPENAI_API_KEY à¹ƒà¸™ .env' });
     const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const r = await ai.responses.create({ model: process.env.OPENAI_MODEL || 'gpt-5.6-luna', input: buildPrompt(p, t) });
     const text = r.output_text.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-    try { s.json(JSON.parse(text)); } catch { s.json({ raw: text, series: t['ซีรีส์/Ai'], warnings: ['AI returned non-JSON output'] }); }
+    try { s.json(JSON.parse(text)); } catch { s.json({ raw: text, series: t['à¸‹à¸µà¸£à¸µà¸ªà¹Œ/Ai'], warnings: ['AI returned non-JSON output'] }); }
   } catch (e) {
     const status = e?.status === 401 ? 502 : e?.status === 429 ? 503 : 500;
-    const message = e?.status === 429 ? 'OpenAI API ตอบ 429: บัญชี/API project ยังไม่ active หรือ billing ยังไม่พร้อม กรุณาตรวจสอบ billing แล้วลอง Generate ใหม่' : e?.message || 'เกิดข้อผิดพลาดในการสร้าง Content Pack';
+    const message = e?.status === 429 ? 'OpenAI API à¸•à¸­à¸š 429: à¸šà¸±à¸à¸Šà¸µ/API project à¸¢à¸±à¸‡à¹„à¸¡à¹ˆ active à¸«à¸£à¸·à¸­ billing à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸žà¸£à¹‰à¸­à¸¡ à¸à¸£à¸¸à¸“à¸²à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š billing à¹à¸¥à¹‰à¸§à¸¥à¸­à¸‡ Generate à¹ƒà¸«à¸¡à¹ˆ' : e?.message || 'à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¸ªà¸£à¹‰à¸²à¸‡ Content Pack';
     s.status(status).json({ error: message, code: e?.code || null, status: e?.status || null });
   }
 });
