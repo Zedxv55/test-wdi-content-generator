@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="th">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DIAMOND WDI — AI Content & Short Video Studio</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><div><strong>💎 DIAMOND</strong><span> WDI AI CONTENT & SHORT VIDEO STUDIO</span></div><div id="health" class="status">กำลังเชื่อมต่อ...</div></header>
+<main>
+<section class="toolbar"><input id="search" placeholder="ค้นหารหัส / ชื่อ / รุ่นรถ / ยี่ห้อ" onkeydown="if(event.key==='Enter')loadProducts()"><select id="category" onchange="loadProducts()"><option value="">ทุกหมวดหมู่</option></select><select id="brand" onchange="loadProducts()"><option value="">ทุกยี่ห้อรถ</option></select><select id="model" onchange="loadProducts()"><option value="">ทุกรุ่นรถ</option></select><button onclick="loadProducts()">ค้นหา</button></section>
+<section class="workspace">
+<aside class="panel products-panel"><div class="panel-title"><h2>สินค้า</h2><span id="count"></span></div><div id="products">กำลังโหลด...</div></aside>
+<article class="panel editor"><div id="detail" class="empty">เลือกสินค้าจากรายการด้านซ้าย</div></article>
+<aside class="panel templates"><div class="panel-title"><h2>Short Video Series</h2><span id="templateCount"></span></div><div id="templates">กำลังโหลด...</div></aside>
+</section></main><script src="app.js"></script></body></html>

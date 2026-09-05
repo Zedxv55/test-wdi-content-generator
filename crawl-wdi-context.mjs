@@ -1,0 +1,25 @@
+import XLSX from 'xlsx';
+const BASE='https://www.wdi.co.th/';
+const START=BASE+'product/category-select.php';
+const FILE='D:\\Windows\\Document\\VSCode\\ex\\products_full.xlsx';
+const OUT=FILE.replace('products_full.xlsx','products_full__CONTEXT.xlsx');
+const HEAD=['Category','Sub Category','Car Brand','Car Model','Product URL','Product Code','Product Name (TH)','Product Name (EN)','Main Image URL','Additional Images','Description (TH)','Description (EN)','Source Page URL'];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const dec=s=>String(s||'').replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16))).replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&quot;/gi,'\"').replace(/&#39;/g,"'").replace(/&lt;/gi,'<').replace(/&gt;/gi,'>');
+const text=s=>dec(String(s||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim());
+const abs=u=>{try{return new URL(u,BASE).href.replace('https://www.wdi.co.th../','https://www.wdi.co.th/')}catch{return ''}};
+const b64=s=>{try{return Buffer.from(decodeURIComponent(String(s||'')),'base64').toString('utf8').trim()}catch{return ''}};
+async function get(u){for(let n=0;n<4;n++){try{const r=await fetch(u,{headers:{'user-agent':'Mozilla/5.0 WDI-Crawler/3.0','accept-language':'th-TH,th;q=0.9,en;q=0.8','cache-control':'no-cache'}});if(r.ok)return await r.text()}catch{}await sleep(700*(n+1))}return null}
+function hrefs(h){return [...String(h).matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>/gi)].map(m=>abs(m[1])).filter(Boolean)}
+function block(h,id){const a=h.indexOf('id="'+id+'"');if(a<0)return '';const s=h.indexOf('>',a)+1,e=h.indexOf('</div>',s);return e>s?h.slice(s,e):''}
+function attr(h,re){const m=String(h).match(re);return m?dec(m[1]):''}
+function parseProduct(h,u){const nav=(h.match(/<nav class=["']woocommerce-breadcrumb["'][\s\S]*?<\/nav>/i)||[''])[0];const bc=[...nav.matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)].map(m=>text(m[1]));const code=text(attr(h,/class=["'][^"']*product-item-number[^"']*["'][^>]*>([\s\S]*?)<\/div>/i));const th=attr(h,/class=["'][^"']*product-name[^"']*["'][^>]*data-th=["']([^"']*)["']/i);const en=attr(h,/class=["'][^"']*product-name[^"']*["'][^>]*data-th=["'][^"']*["'][^>]*data-en=["']([^"']*)["']/i);const main=abs(attr(h,/id=["']main-product-image["'][^>]*src=["']([^"']*)["']/i));const adds=[...String(h).matchAll(/class=["']detail-thumbnail["'][^>]*data-detail-src=["']([^"']+)["']/gi)].map(m=>abs(m[1])).filter((v,i,a)=>v&&a.indexOf(v)===i).join('; ');return {bc,code,th,en,main,adds,thDesc:text(block(h,'content-th')),enDesc:text(block(h,'content-en'))}}
+function ctx(u){const q=new URL(u).searchParams;const rawCat=b64(q.get('category01')||q.get('category')||'');const sub=b64(q.get('category_detail')||'');const brand=b64(q.get('car_brand_input')||'');const model=b64(q.get('car_model_input')||'');let cat=rawCat||'';let subcat=sub||'';if(!subcat&&cat&&!brand&&cat!==b64(q.get('category_detail')||''))subcat='';return {cat,subcat,brand,model}}
+async function pool(items,limit,fn){const out=[];let next=0;async function w(){while(true){const i=next++;if(i>=items.length)return;out[i]=await fn(items[i],i)}}await Promise.all(Array.from({length:limit},w));return out}
+const q=[START],seen=new Set([START]),products=new Set(),contexts=new Map();
+while(q.length){const batch=q.splice(0,4);for(const u of batch){const h=await get(u);if(!h)continue;for(const v of hrefs(h)){if(/\/view-product\.php\?/i.test(v)){products.add(v);const c=ctx(u);const key=v+'|'+JSON.stringify(c);contexts.set(key,{url:v,source:u,...c})}else if(/\/product\/product-led-lamps\.php(?:\?|$)/i.test(v)&&!seen.has(v)){seen.add(v);q.push(v)}}}console.log(`Discovery ${seen.size} pages | products ${products.size} | contexts ${contexts.size}`);await sleep(150)}
+const prod=[...products], cache=new Map();let n=0;
+for(let i=0;i<prod.length;i+=6){const batch=prod.slice(i,i+6);const rows=await pool(batch,3,async u=>{const h=await get(u);n++;if(!h)return null;try{const p=parseProduct(h,u);cache.set(u,p);return p}catch{return null}});console.log(`Product detail ${Math.min(i+6,prod.length)}/${prod.length}`);await sleep(200)}
+const out=[];for(const rec of contexts.values()){const p=cache.get(rec.url);if(!p)continue;const cat=rec.cat||p.bc?.[0]||'';const sub=rec.subcat||p.bc?.[1]||'';out.push({Category:cat,'Sub Category':sub,'Car Brand':rec.brand,'Car Model':rec.model,'Product URL':rec.url,'Product Code':p.code,'Product Name (TH)':p.th,'Product Name (EN)':p.en,'Main Image URL':p.main,'Additional Images':p.adds,'Description (TH)':p.thDesc,'Description (EN)':p.enDesc,'Source Page URL':rec.source})}
+out.sort((a,b)=>`${a.Category}|${a['Sub Category']}|${a['Car Brand']}|${a['Car Model']}|${a['Product Code']}`.localeCompare(`${b.Category}|${b['Sub Category']}|${b['Car Brand']}|${b['Car Model']}|${b['Product Code']}`));
+const wb=XLSX.readFile(FILE);wb.Sheets['Sheet2']=XLSX.utils.aoa_to_sheet([HEAD,...out.map(r=>HEAD.map(h=>r[h]??''))]);XLSX.writeFile(wb,OUT);console.log(`DONE rows=${out.length} products=${products.size} contexts=${contexts.size} output=${OUT}`);
