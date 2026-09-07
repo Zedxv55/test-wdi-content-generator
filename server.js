@@ -3,18 +3,28 @@ import XLSX from 'xlsx';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT || 3077);
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const PRODUCT_FILE = 'D:\\Windows\\Document\\VSCode\\ex\\Present(Get-web-wdi).xlsx';
-const VIDEO_FILE = 'D:\\Windows\\Document\\VSCode\\ex\\Present(Short-vdo).xlsx';
+const clean = v => String(v ?? '').trim();
+function resolveFile(envKey, fallbackName) {
+  const fromEnv = clean(process.env[envKey]);
+  if (fromEnv) return path.isAbsolute(fromEnv) ? fromEnv : path.join(ROOT, fromEnv);
+  const rel = path.join(ROOT, '..', fallbackName);
+  if (fs.existsSync(rel)) return rel;
+  const local = path.join(ROOT, fallbackName);
+  if (fs.existsSync(local)) return local;
+  return `D:\\Windows\\Document\\VSCode\\ex\\${fallbackName}`;
+}
+const PRODUCT_FILE = resolveFile('PRODUCT_FILE', 'Present(Get-web-wdi).xlsx');
+const VIDEO_FILE = resolveFile('VIDEO_FILE', 'Present(Short-vdo).xlsx');
 app.use(express.json({ limit: '4mb' }));
 app.use(express.static(path.join(ROOT, 'public')));
 
-const clean = v => String(v ?? '').trim();
 const unique = a => [...new Set(a.map(clean).filter(Boolean))];
 function readSheet(file, index = 0) {
   const wb = XLSX.readFile(file);

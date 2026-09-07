@@ -9,7 +9,7 @@ const health = await json('/api/health');
 if (health.status !== 200 || !health.data.ok) throw new Error('health failed');
 if (health.data.products !== 1030) throw new Error(`unexpected product count: ${health.data.products}`);
 if (health.data.templates !== 6) throw new Error(`unexpected template count: ${health.data.templates}`);
-if (!health.data.ai?.dotenvLoaded || !health.data.ai?.openaiKeyConfigured) throw new Error('dotenv/OpenAI key not configured');
+if (!health.data.ai?.dotenvLoaded || (!health.data.ai?.openrouterKeyConfigured && !health.data.ai?.openaiKeyConfigured)) throw new Error('dotenv/API key not configured (need OPENROUTER_API_KEY or OPENAI_API_KEY)');
 const products = await json('/api/products?q=00-082');
 if (products.status !== 200 || !products.data.length) throw new Error('product search failed');
 const templates = await json('/api/templates');
