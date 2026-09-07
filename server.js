@@ -21,9 +21,15 @@ function readSheet(file, index = 0) {
   return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[index]], { defval: '' });
 }
 function loadProducts() { return readSheet(PRODUCT_FILE); }
-function loadTemplates() { return readSheet(VIDEO_FILE).filter(r => clean(r['Ã Â¸â€¹Ã Â¸ÂµÃ Â¸Â£Ã Â¸ÂµÃ Â¸ÂªÃ Â¹Å’/Ai'])); }
+function loadTemplates() { return readSheet(VIDEO_FILE).filter(r => clean(r['ซีรีส์/Ai'])); }
 function envStatus() {
-  return { dotenvLoaded: true, provider: process.env.AI_PROVIDER || 'openrouter', openrouterKeyConfigured: Boolean(process.env.OPENROUTER_API_KEY), model: process.env.OPENROUTER_MODEL || 'minimax/minimax-m3:free', port: PORT };
+  const hasOR = Boolean(process.env.OPENROUTER_API_KEY);
+  const hasOA = Boolean(process.env.OPENAI_API_KEY);
+  const provider = process.env.AI_PROVIDER || (hasOR ? 'openrouter' : hasOA ? 'openai' : 'openrouter');
+  const model = provider === 'openrouter'
+    ? (process.env.OPENROUTER_MODEL || 'minimax/minimax-m3:free')
+    : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
+  return { dotenvLoaded: true, provider, openrouterKeyConfigured: hasOR, openaiKeyConfigured: hasOA, model, port: PORT };
 }
 
 app.get('/api/health', (q, s) => {
@@ -36,7 +42,7 @@ app.get('/api/meta', (q, s) => {
   s.json({ total: r.length, categories: unique(r.map(x => x.Category)), subCategories: unique(r.map(x => x['Sub Category'])), brands: unique(r.map(x => x['Car Brand'])), models: unique(r.map(x => x['Car Model'])) });
 });
 app.get('/api/templates', (q, s) => s.json(loadTemplates().map((r, i) => ({
-  id: i, name: clean(r['Ã Â¸â€¹Ã Â¸ÂµÃ Â¸Â£Ã Â¸ÂµÃ Â¸ÂªÃ Â¹Å’/Ai']), type: clean(r['Ã Â¸â€ºÃ Â¸Â£Ã Â¸Â°Ã Â¹â‚¬Ã Â¸Â Ã Â¸â€”Ã Â¸â€¡Ã Â¸Â²Ã Â¸â„¢']), duration: clean(r['Ã Â¸â€žÃ Â¸Â§Ã Â¸Â²Ã Â¸Â¡Ã Â¸Â¢Ã Â¸Â²Ã Â¸Â§Ã Â¹ÂÃ Â¸â„¢Ã Â¸Â°Ã Â¸â„¢Ã Â¸Â³']), hook: clean(r['Hook Ã Â¸â€¢Ã Â¸Â±Ã Â¸Â§Ã Â¸Â­Ã Â¸Â¢Ã Â¹Ë†Ã Â¸Â²Ã Â¸â€¡']), content: clean(r['Ã Â¹â‚¬Ã Â¸â„¢Ã Â¸Â·Ã Â¹â€°Ã Â¸Â­Ã Â¸Â«Ã Â¸Â²']), cta: clean(r['CTA']), prompt: clean(r['Prompt Ã Â¸ÂÃ Â¸Â¥Ã Â¸Â²Ã Â¸â€¡Ã Â¹Æ’Ã Â¸Å Ã Â¹â€°Ã Â¹â€žÃ Â¸â€Ã Â¹â€°Ã Â¸â€”Ã Â¸Â¸Ã Â¸ÂÃ Â¸Â£Ã Â¸Â¹Ã Â¸â€ºÃ Â¹ÂÃ Â¸Å¡Ã Â¸Å¡ (Google Flow - Scene Ã Â¹Æ’Ã Â¸Â«Ã Â¹â€° AI Ã Â¸Å¾Ã Â¸Â´Ã Â¸Ë†Ã Â¸Â²Ã Â¸Â£Ã Â¸â€œÃ Â¸Â²Ã Â¹â‚¬Ã Â¸Â­Ã Â¸â€¡Ã Â¸â€¢Ã Â¸Â²Ã Â¸Â¡Ã Â¸â€žÃ Â¸Â§Ã Â¸Â²Ã Â¸Â¡Ã Â¸Â¢Ã Â¸Â²Ã Â¸Â§Ã Â¸â€”Ã Â¸ÂµÃ Â¹Ë†Ã Â¸ÂÃ Â¸Â³Ã Â¸Â«Ã Â¸â„¢Ã Â¸â€']), storyboard: [clean(r['Storyboard 00.00-10.00']), clean(r['10.01-20.00']), clean(r['20.01-30.00'])], imagePrompt: clean(r['Prompt image to video']), references: clean(r['Reference Ã Â¸â€”Ã Â¸ÂµÃ Â¹Ë†Ã Â¸â€¢Ã Â¹â€°Ã Â¸Â­Ã Â¸â€¡Ã Â¹â‚¬Ã Â¸â€¢Ã Â¸Â£Ã Â¸ÂµÃ Â¸Â¢Ã Â¸Â¡']), cautions: clean(r['Ã Â¸â€šÃ Â¹â€°Ã Â¸Â­Ã Â¸â€žÃ Â¸Â§Ã Â¸Â£Ã Â¸Â£Ã Â¸Â°Ã Â¸Â§Ã Â¸Â±Ã Â¸â€¡Ã Â¸Â Ã Â¸Â²Ã Â¸Å¾Ã Â¸Â¥Ã Â¸Â±Ã Â¸ÂÃ Â¸Â©Ã Â¸â€œÃ Â¹Å’/Ã Â¸â€šÃ Â¹â€°Ã Â¸Â­Ã Â¸Â¡Ã Â¸Â¹Ã Â¸Â¥']), platforms: clean(r['Ã Â¹ÂÃ Â¸Å¾Ã Â¸Â¥Ã Â¸â€¢Ã Â¸Å¸Ã Â¸Â­Ã Â¸Â£Ã Â¹Å’Ã Â¸Â¡'])
+  id: i, name: clean(r['ซีรีส์/Ai']), type: clean(r['ประเภทงาน']), duration: clean(r['ความยาวแนะนำ']), hook: clean(r['Hook ตัวอย่าง']), content: clean(r['เนื้อหา']), cta: clean(r['CTA']), prompt: clean(r['Prompt กลางใช้ได้ทุกรูปแบบ (Google Flow - Scene ให้ AI พิจารณาเองตามความยาวที่กำหนด)']), storyboard: [clean(r['Storyboard 00.00-10.00']), clean(r['10.01-20.00']), clean(r['20.01-30.00'])], imagePrompt: clean(r['Prompt image to video']), references: clean(r['Reference ที่ต้องเตรียม']), cautions: clean(r['ข้อควรระวังภาพลักษณ์/ข้อมูล']), platforms: clean(r['แพลตฟอร์ม'])
 }))));
 app.get('/api/products', (q, s) => {
   let r = loadProducts();
@@ -53,18 +59,41 @@ function buildPrompt(p, t) {
 app.post('/api/generate', async (q, s) => {
   try {
     const p = q.body.product;
-    if (!p) return s.status(400).json({ error: 'Ã Â¹â€žÃ Â¸Â¡Ã Â¹Ë†Ã Â¸Å¾Ã Â¸Å¡Ã Â¸ÂªÃ Â¸Â´Ã Â¸â„¢Ã Â¸â€žÃ Â¹â€°Ã Â¸Â²' });
+    if (!p) return s.status(400).json({ error: 'ไม่พบสินค้า' });
     const ts = loadTemplates();
     const t = ts[Number(q.body.templateId) || 0];
-    if (!t) return s.status(404).json({ error: 'Ã Â¹â€žÃ Â¸Â¡Ã Â¹Ë†Ã Â¸Å¾Ã Â¸Å¡ Video Template' });
-    if (!process.env.OPENAI_API_KEY) return s.status(503).json({ error: 'Ã Â¸Â¢Ã Â¸Â±Ã Â¸â€¡Ã Â¹â€žÃ Â¸Â¡Ã Â¹Ë†Ã Â¹â€žÃ Â¸â€Ã Â¹â€°Ã Â¸â€¢Ã Â¸Â±Ã Â¹â€°Ã Â¸â€¡Ã Â¸â€žÃ Â¹Ë†Ã Â¸Â² OPENAI_API_KEY Ã Â¹Æ’Ã Â¸â„¢ .env' });
-    const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const r = await ai.responses.create({ model: process.env.OPENAI_MODEL || 'gpt-5.6-luna', input: buildPrompt(p, t) });
-    const text = r.output_text.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-    try { s.json(JSON.parse(text)); } catch { s.json({ raw: text, series: t['Ã Â¸â€¹Ã Â¸ÂµÃ Â¸Â£Ã Â¸ÂµÃ Â¸ÂªÃ Â¹Å’/Ai'], warnings: ['AI returned non-JSON output'] }); }
+    if (!t) return s.status(404).json({ error: 'ไม่พบ Video Template' });
+    const hasOR = Boolean(process.env.OPENROUTER_API_KEY);
+    const hasOA = Boolean(process.env.OPENAI_API_KEY);
+    if (!hasOR && !hasOA) return s.status(503).json({ error: 'ยังไม่ได้ตั้งค่า API Key ใน .env (ต้องมี OPENROUTER_API_KEY หรือ OPENAI_API_KEY)' });
+    const useOR = hasOR && (process.env.AI_PROVIDER !== 'openai');
+    let text = '';
+    if (useOR) {
+      const baseURL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
+      const model = process.env.OPENROUTER_MODEL || 'minimax/minimax-m3:free';
+      const ai = new OpenAI({
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL,
+        defaultHeaders: { 'HTTP-Referer': 'http://localhost:3077', 'X-Title': 'WDI Content Generator' }
+      });
+      const r = await ai.chat.completions.create({
+        model,
+        messages: [{ role: 'user', content: buildPrompt(p, t) }],
+        temperature: 0.7,
+        max_tokens: 4000
+      });
+      text = (r.choices?.[0]?.message?.content || '').trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+    } else {
+      const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const r = await ai.responses.create({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini', input: buildPrompt(p, t) });
+      text = (r.output_text || '').trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+    }
+    try { s.json(JSON.parse(text)); } catch { s.json({ raw: text, series: clean(t['ซีรีส์/Ai']), warnings: ['AI returned non-JSON output'] }); }
   } catch (e) {
     const status = e?.status === 401 ? 502 : e?.status === 429 ? 503 : 500;
-    const message = e?.status === 429 ? 'OpenAI API Ã Â¸â€¢Ã Â¸Â­Ã Â¸Å¡ 429: Ã Â¸Å¡Ã Â¸Â±Ã Â¸ÂÃ Â¸Å Ã Â¸Âµ/API project Ã Â¸Â¢Ã Â¸Â±Ã Â¸â€¡Ã Â¹â€žÃ Â¸Â¡Ã Â¹Ë† active Ã Â¸Â«Ã Â¸Â£Ã Â¸Â·Ã Â¸Â­ billing Ã Â¸Â¢Ã Â¸Â±Ã Â¸â€¡Ã Â¹â€žÃ Â¸Â¡Ã Â¹Ë†Ã Â¸Å¾Ã Â¸Â£Ã Â¹â€°Ã Â¸Â­Ã Â¸Â¡ Ã Â¸ÂÃ Â¸Â£Ã Â¸Â¸Ã Â¸â€œÃ Â¸Â²Ã Â¸â€¢Ã Â¸Â£Ã Â¸Â§Ã Â¸Ë†Ã Â¸ÂªÃ Â¸Â­Ã Â¸Å¡ billing Ã Â¹ÂÃ Â¸Â¥Ã Â¹â€°Ã Â¸Â§Ã Â¸Â¥Ã Â¸Â­Ã Â¸â€¡ Generate Ã Â¹Æ’Ã Â¸Â«Ã Â¸Â¡Ã Â¹Ë†' : e?.message || 'Ã Â¹â‚¬Ã Â¸ÂÃ Â¸Â´Ã Â¸â€Ã Â¸â€šÃ Â¹â€°Ã Â¸Â­Ã Â¸Å“Ã Â¸Â´Ã Â¸â€Ã Â¸Å¾Ã Â¸Â¥Ã Â¸Â²Ã Â¸â€Ã Â¹Æ’Ã Â¸â„¢Ã Â¸ÂÃ Â¸Â²Ã Â¸Â£Ã Â¸ÂªÃ Â¸Â£Ã Â¹â€°Ã Â¸Â²Ã Â¸â€¡ Content Pack';
+    let message = e?.message || 'เกิดข้อผิดพลาดในการสร้าง Content Pack';
+    if (e?.status === 429) message = 'API ตอบ 429 (rate limit / billing ไม่ active): ' + e.message;
+    if (e?.status === 402) message = 'OpenRouter 402: เครดิตฟรีหมดหรือต้องเติมเครดิต - ลองเปลี่ยนโมเดล :free อื่น';
     s.status(status).json({ error: message, code: e?.code || null, status: e?.status || null });
   }
 });
