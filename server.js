@@ -14,11 +14,14 @@ const clean = v => String(v ?? '').trim();
 function resolveFile(envKey, fallbackName) {
   const fromEnv = clean(process.env[envKey]);
   if (fromEnv) return path.isAbsolute(fromEnv) ? fromEnv : path.join(ROOT, fromEnv);
-  const rel = path.join(ROOT, '..', fallbackName);
-  if (fs.existsSync(rel)) return rel;
-  const local = path.join(ROOT, fallbackName);
-  if (fs.existsSync(local)) return local;
-  return `D:\\Windows\\Document\\VSCode\\ex\\${fallbackName}`;
+  const candidates = [
+    path.join(ROOT, 'data', fallbackName),
+    path.join(ROOT, fallbackName),
+    path.join(ROOT, '..', fallbackName),
+    `D:\\Windows\\Document\\VSCode\\ex\\${fallbackName}`
+  ];
+  for (const c of candidates) if (fs.existsSync(c)) return c;
+  return candidates[0];
 }
 const PRODUCT_FILE = resolveFile('PRODUCT_FILE', 'Present(Get-web-wdi).xlsx');
 const VIDEO_FILE = resolveFile('VIDEO_FILE', 'Present(Short-vdo).xlsx');
@@ -63,7 +66,7 @@ app.get('/api/products', (q, s) => {
 });
 
 function buildPrompt(p, t) {
-  return `You are the senior content producer for DIAMOND/WDI. SOURCE OF TRUTH: PRODUCT DATA below. VIDEO TEMPLATE is supplied from the company's Short-vdo workbook.\n\nPRODUCT DATA:\n${JSON.stringify(p, null, 2)}\n\nVIDEO TEMPLATE:\n${JSON.stringify(t, null, 2)}\n\nMANDATORY RULES:\n1) Never invent compatibility, model/year, specifications, included parts, price, stock, warranty or claims.\n2) Product Code, names and fitment must remain exactly as supplied.\n3) Category hierarchy is authoritative. Treat Car Brand/Car Model as fitment context only when populated.\n4) For multi-context products, mention only the selected row context; never merge unrelated vehicle models.\n5) Use real product images as references; never redesign, mirror, recolor or alter geometry.\n6) Do not generate Thai text, logos, QR, phone numbers or technical text inside video. Leave safe areas for post-production.\n7) Vertical 9:16, premium restrained DIAMOND look, subtle ambient audio, no dialogue unless required.\n8) Follow the selected template exactly. Segment 2/3 must include continuation instruction where continuity applies.\n9) Flow prompts MUST be English and ready to paste. Marketing script/caption MUST be Thai.\n10) Return JSON only.\nJSON: {"series":"","duration":"","hook":"","script":"","voiceover":"","scenes":[{"time":"","visual":"","overlay":"","flow_prompt":""}],"image_to_video_prompt":"","caption":"","hashtags":[],"cta":"","source_facts":[],"warnings":[]}`;
+  return `You are the senior content producer for DIAMOND/WDI. SOURCE OF TRUTH: PRODUCT DATA below. VIDEO TEMPLATE is supplied from the company's Short-vdo workbook.\n\nPRODUCT DATA:\n${JSON.stringify(p, null, 2)}\n\nVIDEO TEMPLATE:\n${JSON.stringify(t, null, 2)}\n\nMANDATORY RULES:\n1) Never invent compatibility, model/year, specifications, included parts, price, stock, warranty or claims.\n2) Product Code, names and fitment must remain exactly as supplied.\n3) Category hierarchy is authoritative. Treat Car Brand/Car Model as fitment context only when populated.\n4) For multi-context products, mention only the selected row context; never merge unrelated vehicle models.\n5) Use real product images as references; never redesign, mirror, recolor or alter geometry.\n6) Do not generate Thai text, logos, QR, phone numbers or technical text inside video. Leave safe areas for post-production.\n7) Vertical 9:16, premium restrained DIAMOND look, subtle ambient audio, no dialogue unless required.\n8) Follow the selected template exactly. Segment 2/3 must include continuation instruction where continuity applies.\n9) Flow prompts MUST be English and ready to paste. Marketing script/caption MUST be Thai.\n10) Also generate ready-to-post captions per platform (Thai, no invented specs). Facebook: 2-3 lines + CTA + hashtags. TikTok: short punchy 1-2 lines + hashtags. Instagram: emoji light + hashtags. LINE: polite + CTA to chat. Shopee: title + bullet specs.\n11) Return JSON only.\nJSON: {"series":"","duration":"","hook":"","script":"","voiceover":"","scenes":[{"time":"","visual":"","overlay":"","flow_prompt":""}],"image_to_video_prompt":"","caption":"","hashtags":[],"cta":"","source_facts":[],"warnings":[],"platform_captions":{"facebook":"","tiktok":"","instagram":"","line":"","shopee":""}}`;
 }
 
 app.post('/api/generate', async (q, s) => {
@@ -86,13 +89,24 @@ app.post('/api/generate', async (q, s) => {
         baseURL,
         defaultHeaders: { 'HTTP-Referer': 'http://localhost:3077', 'X-Title': 'WDI Content Generator' }
       });
+      const isDots = /dots/i.test(model);
       const r = await ai.chat.completions.create({
         model,
         messages: [{ role: 'user', content: buildPrompt(p, t) }],
         temperature: 0.7,
-        max_tokens: 4000
+        max_tokens: isDots ? 8000 : 4000,
+        ...(isDots ? { reasoning: { exclude: false }, include_reasoning: true } : {})
       });
-      text = (r.choices?.[0]?.message?.content || '').trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+      const msg = r.choices?.[0]?.message || {};
+      // dots-3 and some reasoning models put output in reasoning field
+      let rawText = (msg.content || '').trim();
+      if (!rawText && msg.reasoning) rawText = String(msg.reasoning).trim();
+      // if reasoning contains thinking + JSON, extract JSON part
+      if (rawText && !rawText.trim().startsWith('{') && rawText.includes('{')) {
+        const m = rawText.match(/\{[\s\S]*\}/);
+        if (m) rawText = m[0];
+      }
+      text = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
     } else {
       const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const r = await ai.responses.create({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini', input: buildPrompt(p, t) });
@@ -108,4 +122,7 @@ app.post('/api/generate', async (q, s) => {
   }
 });
 
-app.listen(PORT, () => console.log(`WDI Content Generator: http://localhost:${PORT}`));
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`WDI Content Generator: http://localhost:${PORT}`));
+}
+export default app;

@@ -1,6 +1,8 @@
 node_modules/
 .env
+.env.local
 *.log
 *.xlsx
 !data/*.xlsx
 .DS_Store
+.vercel
