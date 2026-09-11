@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 140" role="img" aria-label="Diamond">
+  <ellipse cx="170" cy="70" rx="158" ry="62" fill="#2e3d97" stroke="#1e2a6b" stroke-width="4"/>
+  <ellipse cx="170" cy="70" rx="148" ry="54" fill="#ffdd00"/>
+  <!-- diamond icon top -->
+  <g fill="none" stroke="#2e3d97" stroke-width="6" stroke-linejoin="round">
+    <path d="M 92 58 L 112 30 L 132 58 L 112 72 Z"/>
+    <path d="M 132 58 L 152 30 L 172 58 L 152 72 Z"/>
+    <path d="M 172 58 L 192 30 L 212 58 L 192 72 Z"/>
+    <path d="M 212 58 L 232 30 L 252 58 L 232 72 Z"/>
+    <path d="M 92 58 L 252 58"/>
+  </g>
+  <g fill="none" stroke="#2e3d97" stroke-width="5" stroke-linecap="round">
+    <path d="M 138 98 L 170 128 L 202 98"/>
+    <path d="M 152 98 L 170 118 L 188 98"/>
+    <path d="M 170 98 L 170 128"/>
+  </g>
+  <text x="170" y="95" text-anchor="middle" font-family="Arial Black, Inter, sans-serif" font-size="42" font-weight="900" fill="#2e3d97" letter-spacing="0.5">Diamond</text>
+</svg>

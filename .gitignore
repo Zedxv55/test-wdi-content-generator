@@ -4,5 +4,10 @@ node_modules/
 *.log
 *.xlsx
 !data/*.xlsx
+data/wdi-catalog.xlsx
+data/wdi-catalog.json
+data/wdi-catalog.last-good.json
+*.bak*
+public/*.bak*
 .DS_Store
 .vercel
