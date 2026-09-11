@@ -88,9 +88,91 @@ function copyAdAll(btn){
   copyText(['【FACEBOOK】\n'+d.facebook,'【TIKTOK】\n'+d.tiktok,'【INSTAGRAM】\n'+d.instagram,'【LINE】\n'+d.line,'【SHOPEE】\n'+d.shopee,'【HASHTAGS】\n'+d.hashtags,'【SEO】\n'+(d.seo||[]).join(', ')].join('\n\n---\n\n'),btn);
 }
 function scheduleText(){return POST_SCHEDULE.map(s=>`${s.icon} ${s.platform}\n  ${s.slots.join('\n  ')}\n  (${s.note})`).join('\n');}
+// ---------- realtime posting calendar ----------
+const TH_DAYS=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+const POST_SLOTS=[
+  {platform:'Facebook',icon:'📘',days:[2,3,4],time:'12:00',note:'เพจ/กลุ่มอะไหล่ + ปักหมุด'},
+  {platform:'Facebook',icon:'📘',days:[0,1,2,3,4,5,6],time:'19:00',note:'ช่วงพีค 19:00–21:00'},
+  {platform:'Facebook',icon:'📘',days:[0,6],time:'10:00',note:'เสาร์–อาทิตย์'},
+  {platform:'TikTok',icon:'🎵',days:[0,1,2,3,4,5,6],time:'19:00',note:'คลิป 15–25วิ + ปักตะกร้า'},
+  {platform:'Instagram',icon:'📸',days:[1,2,3,4,5],time:'11:00',note:'ภาพจัตุรัส + Reels'},
+  {platform:'Instagram',icon:'📸',days:[1,2,3,4,5],time:'19:00',note:'ภาพจัตุรัส + Reels'},
+  {platform:'LINE OA',icon:'💬',days:[2,4],time:'10:00',note:'Broadcast + ริชเมนู'},
+  {platform:'LINE OA',icon:'💬',days:[2,4],time:'20:00',note:'Broadcast + ริชเมนู'},
+  {platform:'Shopee',icon:'🛒',days:[0,1,2,3,4,5,6],time:'12:00',note:'ลง/ดันสินค้า ชื่อใส่รหัส + สเปก'},
+  {platform:'Shopee',icon:'🛒',days:[0,1,2,3,4,5,6],time:'00:00',note:'รอบแคมเปญ'}
+];
+function calNotes(){try{return JSON.parse(localStorage.getItem('wdi_cal_notes')||'{}');}catch(e){return {};}}
+function calSaveNotes(n){try{localStorage.setItem('wdi_cal_notes',JSON.stringify(n));}catch(e){}}
+function calWeekDays(){const now=new Date(),dow=(now.getDay()+6)%7,out=[];for(let i=0;i<7;i++){const d=new Date(now);d.setDate(now.getDate()-dow+i);out.push(d);}return out;}
+function calKey(dt,slot){return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}|${slot.platform}|${slot.time}`;}
+function calCountdown(target){
+  const ms=target-new Date();if(ms<=0)return 'ถึงเวลาแล้ว!';
+  const m=Math.floor(ms/60000),h=Math.floor(m/60),d=Math.floor(h/24);
+  if(d>0)return `อีก ${d}วัน ${h%24}ชม.`;
+  if(h>0)return `อีก ${h}ชม. ${m%60}นาที`;
+  return `อีก ${m}นาที`;
+}
+function calSheetRows(){
+  const notes=calNotes();
+  return Object.entries(notes).map(([k,v])=>{const [date,platform,time]=k.split('|');return {date,platform,time,note:v};})
+    .sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+}
+function renderCalendar(){
+  const host=$('calWrap');if(!host)return;
+  const days=calWeekDays(),notes=calNotes(),now=new Date();
+  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  let next=null;
+  const cols=days.map(dt=>{
+    const dateStr=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    const isToday=dateStr===todayStr;
+    const slots=POST_SLOTS.filter(s=>s.days.includes(dt.getDay())).map(s=>{
+      const [hh,mm]=s.time.split(':').map(Number);
+      const when=new Date(dt);when.setHours(hh,mm,0,0);
+      const k=calKey(dt,s),has=!!notes[k];
+      if(when>now&&(!next||when<next.when))next={when,label:`${s.icon} ${s.platform} ${s.time}`};
+      const past=when<now&&isToday;
+      return `<button class="cal-slot${past?' past':''}" onclick="calAddNote('${k}',this)" title="${esc(s.note+(has?'\nโน็ต: '+notes[k]:'\nกดเพื่อเพิ่มโน็ต'))}">${s.icon} ${s.time}${has?' 📝':''}</button>`;
+    }).join('');
+    return `<div class="cal-day${isToday?' today':''}"><div class="cal-date">${isToday?'● ':''}${TH_DAYS[dt.getDay()]}<br><b>${dt.getDate()}/${dt.getMonth()+1}</b></div><div class="cal-slots">${slots||'<span class="cal-empty">—</span>'}</div></div>`;
+  }).join('');
+  host.innerHTML=`
+  <div class="cal-top"><div><b>ปฏิทินโพสต์สัปดาห์นี้</b> <span class="cal-clock">ตอนนี้ <span id="calClock">--:--:--</span></span></div>
+  <div class="cal-next" id="calNext">${next?`ถัดไป: ${esc(next.label)} · <b>${calCountdown(next.when)}</b>`:'หมดรอบสัปดาห์นี้แล้ว'}</div></div>
+  <div class="cal-grid">${cols}</div>`;
+  if(window._calTimer)clearInterval(window._calTimer);
+  window._calTimer=setInterval(()=>{
+    const c=$('calClock');if(!c){clearInterval(window._calTimer);return;}
+    c.textContent=new Date().toLocaleTimeString('th-TH',{hour12:false});
+    const n=$('calNext');if(n&&next)n.innerHTML=`ถัดไป: ${esc(next.label)} · <b>${calCountdown(next.when)}</b>`;
+  },1000);
+  renderCalSheet();
+}
+function renderCalSheet(){
+  const host=$('calSheet');if(!host)return;
+  const rows=calSheetRows();
+  host.innerHTML=`<div class="box-title"><h3>ชีตโน็ต/อีเวนต์ (${rows.length})</h3><span><button class="secondary" onclick="copyCalSheet(this)" style="font-size:11px">Copy วางลง Sheet</button> <button class="secondary" onclick="copyCalJSON(this)" style="font-size:11px">Copy JSON</button></span></div>
+  ${rows.length?`<div class="sheet-table">${rows.map(r=>`<div class="sheet-row"><span>${esc(r.date)}</span><span>${esc(r.platform)} ${esc(r.time)}</span><span>${esc(r.note)}</span><button onclick="calDelNote('${esc(r.date)}|${esc(r.platform)}|${esc(r.time)}')">ลบ</button></div>`).join('')}</div>`:'<div class="out">ยังไม่มีโน็ต — กดที่ช่องเวลาในปฏิทินเพื่อเพิ่ม</div>'}`;
+}
+function calAddNote(key,btn){
+  const notes=calNotes();
+  const cur=notes[key]||'';
+  const v=prompt('โน็ตสำหรับรอบนี้ (เว้นว่าง = ลบโน็ต):',cur);
+  if(v===null)return;
+  if(v.trim())notes[key]=v.trim();else delete notes[key];
+  calSaveNotes(notes);renderCalendar();
+  showToast(v.trim()?'บันทึกโน็ตแล้ว ✓':'ลบโน็ตแล้ว');
+}
+function calDelNote(key){const n=calNotes();delete n[key];calSaveNotes(n);renderCalendar();}
+function copyCalSheet(btn){
+  const rows=calSheetRows();
+  copyText(['วันที่\tแพลตฟอร์ม\tเวลา\tโน็ต',...rows.map(r=>`${r.date}\t${r.platform}\t${r.time}\t${r.note}`)].join('\n'),btn);
+}
+function copyCalJSON(btn){copyText(JSON.stringify(calSheetRows(),null,2),btn);}
 function renderAdPack(){
   const caps=buildAdCaptions(),seo=buildSeoKeywords();
   window.lastAdPack={...caps,seo};
+  setTimeout(renderCalendar,0);
   const plats=[['facebook','📘 Facebook'],['tiktok','🎵 TikTok'],['instagram','📸 Instagram'],['line','💬 LINE'],['shopee','🛒 Shopee']];
   $('adTabBody').innerHTML=`
   <h3>แคปชั่นพร้อมโพสต์ <button class="secondary" onclick="copyAdAll(this)" style="margin-left:8px;font-size:12px">Copy ทั้งหมด</button></h3>
@@ -98,8 +180,9 @@ function renderAdPack(){
   <div class="box"><div class="box-title"><h3># แฮชแท็ก</h3><button onclick="copyAdSection('hashtags',this)">Copy</button></div><div class="out">${esc(caps.hashtags)}</div></div>
   <h3>Keyword / SEO (ค้นหาเจอ)</h3>
   <div class="box"><div class="box-title"><h3>คำค้นแนะนำ</h3><button onclick="copyAdSection('seo',this)">Copy</button></div><div class="out">${esc(seo.join(', '))}</div><div class="tags">${seo.map(x=>`<span>${esc(x)}</span>`).join('')}</div></div>
-  <h3>วันเวลาโพสต์แนะนำ (เวลาไทย)</h3>
-  <div class="box"><div class="box-title"><h3>ตารางโพสต์</h3><button onclick="copyAdSection('schedule',this)">Copy</button></div><div class="out">${esc(scheduleText())}</div></div>
+  <h3>วันเวลาโพสต์แนะนำ (เรียลไทม์ + โน็ตได้)</h3>
+  <div class="box"><div class="box-title"><h3>ปฏิทินโพสต์</h3><button onclick="copyAdSection('schedule',this)">Copy ตารางเดิม</button></div><div id="calWrap"></div></div>
+  <div class="box" id="calSheet"></div>
   <h3>AutoPost ด้วย n8n (หรือตั้งเวลาเอง)</h3>
   <div class="box"><div class="box-title"><h3>1) วาง Webhook n8n แล้ว Copy คำสั่ง</h3></div>
     <div style="display:flex;gap:6px;margin-bottom:8px"><input id="n8nWh" placeholder="https://your-n8n/webhook/wdi-ads" value="${esc(n8nWebhookBase())}" style="flex:1;min-height:38px;padding:8px 10px;border:1px solid #303744;border-radius:8px;background:#121720;color:#fff"><button class="secondary" onclick="saveN8nWebhook()">บันทึก</button></div>
