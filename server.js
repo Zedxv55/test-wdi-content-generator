@@ -152,10 +152,15 @@ app.post('/api/generate',async(q,s)=>{
   let text='';
   if(hasOR&&(process.env.AI_PROVIDER!=='openai')){
    const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});
-   const content=[{type:'text',text:buildPromptV2(p,t)}];
-   for(const u of images)content.push({type:'image_url',image_url:{url:u}});
-   const r=await ai.chat.completions.create({model,messages:[{role:'user',content}],temperature:0.2,max_tokens:5000});
-   const msg=r.choices?.[0]?.message||{};let rawText=typeof msg.content==='string'?msg.content.trim():'';if(!rawText&&msg.reasoning)rawText=String(msg.reasoning).trim();if(Array.isArray(msg.content))rawText=msg.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim();if(rawText&&!rawText.trim().startsWith('{')&&rawText.includes('{')){const a=rawText.indexOf('{');const b=rawText.lastIndexOf('}');if(b>a)rawText=rawText.slice(a,b+1);}text=rawText.replace(/^```json\s*/i,'').replace(/\s*```$/i,'').trim();
+    const content=[{type:'text',text:buildPromptV2(p,t)}];
+    for(const u of images)content.push({type:'image_url',image_url:{url:u}});
+    const cleanJsonText=t=>{let x=String(t||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();if(x&&!x.startsWith('{')&&x.includes('{')){const a=x.indexOf('{');const b=x.lastIndexOf('}');if(b>a)x=x.slice(a,b+1);}return x.trim();};
+    const msgToText=m=>{let c=typeof m.content==='string'?m.content.trim():'';if(!c&&m.reasoning)c=String(m.reasoning).trim();if(Array.isArray(m.content))c=m.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim();return cleanJsonText(c);};
+    for(let attempt=0;attempt<3;attempt++){
+     const r=await ai.chat.completions.create({model,messages:[{role:'user',content}],temperature:0.2,max_tokens:5000});
+     text=msgToText(r.choices?.[0]?.message||{});
+     try{JSON.parse(text);break;}catch{ if(attempt===2)break; }
+    }
   }else{
    const ai=new OpenAI({apiKey:process.env.OPENAI_API_KEY});const r=await ai.responses.create({model,input:buildPromptV2(p,t)});text=(r.output_text||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');
   }
