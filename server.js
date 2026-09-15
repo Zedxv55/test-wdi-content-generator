@@ -64,14 +64,30 @@ function dataStatus(){
 app.get('/api/data-status',(q,s)=>s.json({ok:true,source:'local-first',products:loadProducts().length,fitmentRows:loadFitmentRows().length,files:dataStatus()}));
 function fitmentIndex(){const map=new Map();for(const r of loadFitmentRows()){const url=clean(r.Product_URL);if(!url)continue;if(!map.has(url))map.set(url,{brands:new Set(),models:new Set(),contexts:new Set(),evidence:new Set()});const x=map.get(url);if(clean(r.Car_Brand))x.brands.add(clean(r.Car_Brand));if(clean(r.Car_Model))x.models.add(clean(r.Car_Model));if(clean(r.Fitment_Context))x.contexts.add(clean(r.Fitment_Context));if(clean(r.Source_Text))x.evidence.add(clean(r.Source_Text));}return map;}
 function attachFitment(products){const idx=fitmentIndex();return products.map(p=>{const x=idx.get(clean(p['Product URL']));return {...p,'Fitment Brands':x?[...x.brands].join(', '):'','Fitment Models':x?[...x.models].join(' | '):'','Fitment Contexts':x?[...x.contexts].join(' | '):'','Fitment Evidence':x?[...x.evidence].join(' | '):''};});}
-function loadTemplates(){return readSheet(VIDEO_FILE).filter(r=>clean(r['ซีรีส์/Ai']));}
+function loadTemplates(){return readSheet(VIDEO_FILE).filter(r=>clean(r['ซีรีส์/Ai'])&&clean(r['สถานะ']).startsWith('Template'));}
+function readSheetName(name){try{const wb=XLSX.readFile(VIDEO_FILE);const ws=wb.Sheets[name];if(!ws)return[];return XLSX.utils.sheet_to_json(ws,{defval:''});}catch{return[];}}
+function loadSeriesV(){return readSheetName('Series Selector v2').filter(r=>clean(r['รหัสใช้งาน'])&&/^[A-Z]+\d+$/.test(clean(r['รหัสใช้งาน']))).map(r=>({code:clean(r['รหัสใช้งาน']),name:clean(r['ชื่อที่คนใช้เห็น']),when:clean(r['ใช้เมื่อ']),forCategory:clean(r['เหมาะกับหมวด']),duration:clean(r['ความยาว']),output:clean(r['Output']),qc:clean(r['QC'])}));}
+function loadCategories(){const mat=readSheetName('Category Prompt Matrix').filter(r=>clean(r['รหัสหมวด']));const lib={};for(const r of readSheetName('Category Prompt Library')){if(clean(r['รหัส']))lib[clean(r['รหัส'])]=clean(r['Prompt พร้อมคัดลอก (ใช้ร่วมกับ Product Truth + Reference Image)']);}return mat.map(r=>({code:clean(r['รหัสหมวด']),name:clean(r['ชื่อที่คนใช้เห็น']),forProducts:clean(r['ใช้กับสินค้า']),focus:clean(r['จุดเน้นภาพ/วิดีโอ']),dontGuess:clean(r['ห้ามเดา/ห้ามเปลี่ยน']),core:clean(r['Prompt Category Core']),direction:clean(r['Prompt Scene Direction']),negative:clean(r['Negative Prompt เพิ่ม']),library:lib[clean(r['รหัสหมวด'])]||''}));}
+function loadPromptBlocks(){const m={};for(const r of readSheetName('AI Prompt Builder')){if(clean(r['BLOCK']))m[clean(r['BLOCK'])]={text:clean(r['เนื้อหา']),when:clean(r['ระบบควรส่งเมื่อไร'])};}return m;}
+function loadPlatformSpecs(){return readSheetName('Platform Output').filter(r=>clean(r['Platform'])).map(r=>({platform:clean(r['Platform']),asset:clean(r['Asset หลัก']),ratio:clean(r['สัดส่วน']),length:clean(r['ความยาวแนะนำ']),copy:clean(r['ข้อความ']),note:clean(r['หมายเหตุ'])}));}
+function guessCategoryCode(p){const t=[p['Product Name (TH)'],p['Product Name (EN)'],p.Category,p['Sub Category']].map(clean).join(' ');const has=(...ks)=>ks.some(k=>t.includes(k));if(has('คู่','pair','Pair')||(has('LH')&&has('RH'))||t.includes('L/R'))return 'C07';if(has('เสื้อ','housing','Housing','HOUSING'))return 'C03';if(has('กระจก','mirror','Mirror','MIRROR'))return 'C06';if(has('ทับทิม','reflector','Reflector','marker','Marker')&&!has('lamp','Lamp','ไฟท้าย','ไฟหน้า'))return 'C05';if(has('ไฟเลี้ยว','ไฟสัญญาณ','signal','Signal','turn','Turn'))return 'C04';if(has('ไฟหน้า','head','Head','HEAD'))return 'C01';if(has('ไฟท้าย','tail','Tail','TAIL'))return 'C02';return 'C09';}
+function resolveCategory(codeOrNull,p){const cats=loadCategories();let code=clean(codeOrNull)||guessCategoryCode(p);let cat=cats.find(c=>c.code===code)||cats.find(c=>c.code==='C09');return{code:cat.code,cat,auto:!clean(codeOrNull)};}
+const VMAP={V01:'S13',V02:'S07',V03:'S03',V04:'S04',V05:'S11',V06:'S01',V07:'S14',V08:'S05',V09:'S08',V10:'S11',V11:'S06',V12:'S04',V13:'S17',V14:'S01',V15:'S16'};
+const GENERIC_V=new Set(['V01','V02','V13','V14','V15']);
+function resolveSeries(vCode,catCode){const v=clean(vCode).toUpperCase();let s=VMAP[v]||null;let reason='';if(!s){s='S01';reason='ไม่ระบุ V — ใช้ S01 ค่าเริ่มต้น';}else reason=`${v} → ${s} (mapping)`;if(GENERIC_V.has(v)){if(catCode==='C07'&&s!=='S04'){s='S04';reason+=` + C07 override → S04`;}else if(catCode==='C08'&&s!=='S11'){s='S11';reason+=` + C08 override → S11`;}}const ts=loadTemplates();let idx=ts.findIndex(r=>clean(r['รหัสซีรีส์'])===s);if(idx<0)idx=0;const row=ts[idx];return{sCode:clean(row['รหัสซีรีส์'])||('T'+(idx+1)),sIndex:idx,row,reason};}
 function envStatus(){const hasOR=Boolean(process.env.OPENROUTER_API_KEY);const hasOA=Boolean(process.env.OPENAI_API_KEY);const provider=process.env.AI_PROVIDER||(hasOR?'openrouter':hasOA?'openai':'openrouter');const model=provider==='openrouter'?(process.env.OPENROUTER_MODEL||'minimax/minimax-m3:free'):(process.env.OPENAI_MODEL||'gpt-4o-mini');return{dotenvLoaded:true,provider,openrouterKeyConfigured:hasOR,openaiKeyConfigured:hasOA,model,port:PORT};}
 app.get('/api/health',(q,s)=>{try{s.json({ok:true,products:loadProducts().length,templates:loadTemplates().length,fitmentRows:loadFitmentRows().length,ai:envStatus()});}catch(e){s.status(500).json({ok:false,error:e.message});}});
 app.get('/api/config',(q,s)=>s.json(envStatus()));
 app.get('/api/meta',(q,s)=>{const r=loadProducts();const f=loadFitmentRows();s.json({total:r.length,categories:unique(r.map(x=>x.Category)),subCategories:unique(r.map(x=>x['Sub Category'])),brands:unique(f.map(x=>x.Car_Brand)),models:unique(f.map(x=>x.Car_Model))});});
 app.get('/api/templates',(q,s)=>s.json(loadTemplates().map((r,i)=>({
- id:i,name:clean(r['ซีรีส์/Ai']),type:clean(r['ประเภทงาน']),duration:clean(r['ความยาวแนะนำ']),hook:clean(r['Hook ตัวอย่าง']),content:clean(r['เนื้อหา']),cta:clean(r['CTA']),prompt:clean(r['Prompt กลางใช้ได้ทุกรูปแบบ (Google Flow - Scene ให้ AI พิจารณาเองตามความยาวที่กำหนด)']),storyboard:[clean(r['Storyboard 00.00-10.00']),clean(r['10.01-20.00']),clean(r['20.01-30.00'])],imagePrompt:clean(r['Prompt image to video']),references:clean(r['Reference ที่ต้องเตรียม']),cautions:clean(r['ข้อควรระวังภาพลักษณ์/ข้อมูล']),platforms:clean(r['แพลตฟอร์ม'])
+ id:i,code:clean(r['รหัสซีรีส์']),name:clean(r['ซีรีส์/Ai']),type:clean(r['ประเภทงาน']),duration:clean(r['ความยาวแนะนำ']),hook:clean(r['Hook ตัวอย่าง']),content:clean(r['เนื้อหา']),cta:clean(r['CTA']),prompt:clean(r['Prompt กลางใช้ได้ทุกรูปแบบ (Google Flow - Scene ให้ AI พิจารณาเองตามความยาวที่กำหนด)']),storyboard:[clean(r['Storyboard 1 / 00:00–10:00']),clean(r['Storyboard 2 / 10:00–20:00']),clean(r['Storyboard 3 / 20:00–30:00'])],imagePrompt:clean(r['Image-to-Video Master / Continuity']),references:clean(r['Reference ที่ต้องเตรียม']),cautions:clean(r['ข้อควรระวังภาพลักษณ์/ข้อมูล']),platforms:clean(r['แพลตฟอร์ม']),status:clean(r['สถานะ']),useWhen:clean(r['ใช้เมื่อ / เลือกซีรีส์นี้เมื่อ']),required:clean(r['ข้อมูลบังคับก่อนเจน']),noGuess:clean(r['ข้อมูลห้ามเดา']),aiOutput:clean(r['AI Output ต้องส่งคืน']),risk:clean(r['ระดับความเสี่ยง'])
 }))));
+app.get('/api/series-v',(q,s)=>s.json(loadSeriesV()));
+app.get('/api/categories',(q,s)=>s.json(loadCategories()));
+app.get('/api/platforms',(q,s)=>s.json(loadPlatformSpecs()));
+app.get('/api/prompt-blocks',(q,s)=>s.json(loadPromptBlocks()));
+app.get('/api/category-suggest',(q,s)=>{const p={Category:q.query.category||'', 'Sub Category':q.query.sub||'', 'Product Name (TH)':q.query.th||'', 'Product Name (EN)':q.query.en||''};const r=resolveCategory(q.query.code||'',p);s.json({code:r.code,name:r.cat.name,auto:r.auto});});
+app.get('/api/resolve-series',(q,s)=>{const p={Category:q.query.category||'', 'Sub Category':q.query.sub||'', 'Product Name (TH)':q.query.th||'', 'Product Name (EN)':q.query.en||''};const c=resolveCategory(q.query.cat||'',p);const r=resolveSeries(q.query.v||'',c.code);s.json({vCode:clean(q.query.v).toUpperCase(),category:c.code,categoryName:c.cat.name,categoryAuto:c.auto,sCode:r.sCode,sName:clean(r.row['ซีรีส์/Ai']),sRisk:clean(r.row['ระดับความเสี่ยง']),sUseWhen:clean(r.row['ใช้เมื่อ / เลือกซีรีส์นี้เมื่อ']),reason:r.reason});});
 app.get('/api/products',(q,s)=>{
  let r=loadProducts();
  const fit=loadFitmentRows();
@@ -108,11 +124,16 @@ function qaContentPack(d,p){
  if(!p['Fitment Models']&&!p['Fitment Brands']&&!p['Fitment Contexts'])checks.push({status:'PASS',message:'ไม่มี Fitment ที่ยืนยัน: ระบบต้องไม่สร้างรถหรือคำเคลมความเข้ากันได้'});
  return {status:checks.some(x=>x.status==='FAIL')?'REVIEW':'PASS',checks};
 }
-function buildPromptV2(p,t){
+function buildPromptV2(p,t,ctx){
  const images=productImageUrls(p);
+ const cat=ctx?.cat||null;
+ const seriesExtra=[['รหัสซีรีส์',t['รหัสซีรีส์']],['ใช้เมื่อ',t['ใช้เมื่อ / เลือกซีรีส์นี้เมื่อ']],['ข้อมูลบังคับก่อนเจน',t['ข้อมูลบังคับก่อนเจน']],['ข้อมูลห้ามเดา',t['ข้อมูลห้ามเดา']],['AI Output ต้องส่งคืน',t['AI Output ต้องส่งคืน']],['ระดับความเสี่ยง',t['ระดับความเสี่ยง']]].filter(([,v])=>clean(v)).map(([k,v])=>`- ${k}: ${clean(v)}`).join('\n');
+ const catSection=cat?`\n\nCATEGORY MODE [${cat.code} ${cat.name}]:\n${cat.core}\nSCENE DIRECTION: ${cat.direction}\nDO-NOT-GUESS: ${cat.dontGuess}\nCATEGORY NEGATIVE: ${cat.negative}`:'';
+ const gb=ctx?.blocks?.['01 GLOBAL RULES']?.text||'';
+ const globalRules=gb?`\n\nGLOBAL ORCHESTRATOR RULES (from company Prompt Builder):\n${gb}`:'';
  return `You are the WDI/DIAMOND senior content engineer. Your job is PDCA: PLAN the correct video structure, DO generate the prompt pack, CHECK every claim and visual instruction against the supplied WDI product data AND the attached product images, then ACT by fixing anything unsafe before returning the final pack.
 
-SOURCE OF TRUTH:\n${JSON.stringify(p,null,2)}\n\nVIDEO SERIES:\n${JSON.stringify(t,null,2)}\n\nATTACHED WDI PRODUCT IMAGES: ${images.length} image(s). You can see them in this request. FIRST classify every image as exactly one of: HERO_PRODUCT, REAL_PRODUCT_VIEW, CLOSE_UP_DETAIL, PACKAGING, TECHNICAL_DRAWING, VEHICLE_CONTEXT, INFOGRAPHIC, CONTACT_SHEET, UNKNOWN.
+SOURCE OF TRUTH:\n${JSON.stringify(p,null,2)}\n\nVIDEO SERIES:\n${JSON.stringify(t,null,2)}${seriesExtra?`\n\nSERIES CONSTRAINTS (from company workbook):\n${seriesExtra}`:''}${catSection}${globalRules}\n\nATTACHED WDI PRODUCT IMAGES: ${images.length} image(s). You can see them in this request. FIRST classify every image as exactly one of: HERO_PRODUCT, REAL_PRODUCT_VIEW, CLOSE_UP_DETAIL, PACKAGING, TECHNICAL_DRAWING, VEHICLE_CONTEXT, INFOGRAPHIC, CONTACT_SHEET, UNKNOWN.
 
 VISUAL FIDELITY RULES (highest priority):
 - The real WDI images are the visual source of truth. Never redesign, improve, simplify, mirror, recolor, add, remove, merge, or reinterpret product geometry.
@@ -143,16 +164,21 @@ function buildMarketplacePrompt(p){const fit=[p['Fitment Brands'],p['Fitment Mod
 app.post('/api/generate-marketplace',async(q,s)=>{try{const p=q.body.product;if(!p)return s.status(400).json({error:'Product required'});const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});const r=await ai.chat.completions.create({model:process.env.OPENROUTER_MODEL||'minimax/minimax-m3:free',messages:[{role:'user',content:buildMarketplacePrompt(p)}],temperature:0.45,max_tokens:4000});const text=String(r.choices?.[0]?.message?.content||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');try{s.json(JSON.parse(text));}catch{s.json({raw:text});}}catch(e){s.status(500).json({error:e.message});}});
 app.post('/api/generate',async(q,s)=>{
  try{
-  const p=q.body.product;if(!p)return s.status(400).json({error:'ไม่พบสินค้า'});
-  const templateId=Number(q.body.templateId)||0;const ts=loadTemplates();const t=ts[templateId];if(!t)return s.status(404).json({error:'ไม่พบ Video Template'});
-  const hasOR=Boolean(process.env.OPENROUTER_API_KEY),hasOA=Boolean(process.env.OPENAI_API_KEY);if(!hasOR&&!hasOA)return s.status(503).json({error:'ยังไม่ได้ตั้งค่า API Key ใน .env'});
-  const images=productImageUrls(p);const model=hasOR&&(process.env.AI_PROVIDER!=='openai')?(process.env.OPENROUTER_MODEL||'thinkingmachines/inkling:free'):(process.env.OPENAI_MODEL||'gpt-4o-mini');
-  const cacheKey=crypto.createHash('sha256').update(JSON.stringify({v:2,model,templateId,product:p,images})).digest('hex');const cache=loadContentCache();
-  if(!q.body.force&&cache[cacheKey])return s.json({...cache[cacheKey],_meta:{model,cache:true,imageCount:images.length,qa:cache[cacheKey].qa||null}});
+   const p=q.body.product;if(!p)return s.status(400).json({error:'ไม่พบสินค้า'});
+   const ts=loadTemplates();
+   const catRes=resolveCategory(q.body.categoryCode||'',p);
+   let t,res;
+   if(clean(q.body.vCode)){res=resolveSeries(q.body.vCode,catRes.code);t=res.row;}
+   else{const templateId=Number(q.body.templateId)||0;t=ts[templateId];if(!t)return s.status(404).json({error:'ไม่พบ Video Template'});res={sCode:clean(t['รหัสซีรีส์'])||('T'+(templateId+1)),sIndex:templateId,reason:'legacy templateId'};}
+   const hasOR=Boolean(process.env.OPENROUTER_API_KEY),hasOA=Boolean(process.env.OPENAI_API_KEY);if(!hasOR&&!hasOA)return s.status(503).json({error:'ยังไม่ได้ตั้งค่า API Key ใน .env'});
+    const images=productImageUrls(p);const model=hasOR&&(process.env.AI_PROVIDER!=='openai')?(process.env.OPENROUTER_MODEL||'thinkingmachines/inkling:free'):(process.env.OPENAI_MODEL||'gpt-4o-mini');
+    const blocks=loadPromptBlocks();const ctx={cat:catRes.cat,blocks};
+    const cacheKey=crypto.createHash('sha256').update(JSON.stringify({v:4,model,vCode:clean(q.body.vCode).toUpperCase(),sCode:res.sCode,category:catRes.code,product:p,images})).digest('hex');const cache=loadContentCache();
+    if(!q.body.force&&cache[cacheKey])return s.json({...cache[cacheKey],_meta:{model,cache:true,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,qa:cache[cacheKey].qa||null}});
   let text='';
   if(hasOR&&(process.env.AI_PROVIDER!=='openai')){
    const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});
-    const content=[{type:'text',text:buildPromptV2(p,t)}];
+    const content=[{type:'text',text:buildPromptV2(p,t,ctx)}];
     for(const u of images)content.push({type:'image_url',image_url:{url:u}});
     const cleanJsonText=t=>{let x=String(t||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();if(x&&!x.startsWith('{')&&x.includes('{')){const a=x.indexOf('{');const b=x.lastIndexOf('}');if(b>a)x=x.slice(a,b+1);}return x.trim();};
     const msgToText=m=>{let c=typeof m.content==='string'?m.content.trim():'';if(!c&&m.reasoning)c=String(m.reasoning).trim();if(Array.isArray(m.content))c=m.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim();return cleanJsonText(c);};
@@ -161,11 +187,11 @@ app.post('/api/generate',async(q,s)=>{
      text=msgToText(r.choices?.[0]?.message||{});
      try{JSON.parse(text);break;}catch{ if(attempt===2)break; }
     }
-  }else{
-   const ai=new OpenAI({apiKey:process.env.OPENAI_API_KEY});const r=await ai.responses.create({model,input:buildPromptV2(p,t)});text=(r.output_text||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');
-  }
-  try{
-   const out=JSON.parse(text);out.qa=qaContentPack(out,p);out._meta={model,cache:false,imageCount:images.length,qa:out.qa};
+   }else{
+    const ai=new OpenAI({apiKey:process.env.OPENAI_API_KEY});const r=await ai.responses.create({model,input:buildPromptV2(p,t,ctx)});text=(r.output_text||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');
+   }
+   try{
+    const out=JSON.parse(text);out.qa=qaContentPack(out,p);out._meta={model,cache:false,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,qa:out.qa};
    cache[cacheKey]=out;saveContentCache(cache);s.json(out);
   }catch{s.status(502).json({error:'AI ตอบกลับไม่ใช่ JSON ที่ใช้งานได้ — กดเจนใหม่ได้โดยไม่ต้องเปลี่ยนข้อมูลสินค้า',raw:text.slice(0,6000),model});}
  }catch(e){
