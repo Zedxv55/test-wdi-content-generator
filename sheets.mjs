@@ -8,7 +8,7 @@ import {
 } from './db.mjs';
 
 export const NV = '[NOT_VERIFIED]';
-export const BUILDER_V = '5';
+export const BUILDER_V = '6';
 const clean = v => String(v ?? '').trim();
 
 function shade(root) {
@@ -52,6 +52,7 @@ const X = {
     const t = `${clean(p['Product Code'])} ${clean(p['Product Name (TH)'])} ${clean(p['Product Name (EN)'])}`;
     if (/คู่|\bpair\b/i.test(t)) return { value: 'Pair (LH+RH)', evidence: 'name' };
     if (/[A-Z0-9-]*L\s*\/\s*[A-Z0-9-]*R/i.test(t)) return { value: 'Pair (LH+RH)', evidence: 'name' };
+    if (/[A-Z0-9-]*R\s*\/\s*[A-Z0-9-]*L/i.test(t)) return { value: 'Pair (RH+LH)', evidence: 'name' };
     let m = t.match(/(^|[^A-Z])(LH|RH)([^A-Z]|$)/);
     if (m) return { value: m[2], evidence: 'code' };
     m = t.match(/[\s\-_\/](L|R)\s*$/);
@@ -107,6 +108,18 @@ export function buildIdentity(p, categoryCode) {
   try {
     const ni = X.not_included(p);
     if (ni && ni.value) { components.not_included = { label: 'ไม่รวมในชุด', value: ni.value, evidence: ni.evidence, status: 'VERIFIED' }; verified++; }
+  } catch {}
+  try {
+    const nt = `${clean(p['Product Code'])} ${clean(p['Product Name (TH)'])} ${clean(p['Product Name (EN)'])}`;
+    const cm = nt.match(/\b(smoke|smoked|clear|amber|red|chrome|black|white|yellow)\b/i);
+    if (cm) {
+      const hint = cm[1].charAt(0).toUpperCase() + cm[1].slice(1).toLowerCase() + ' (per name — confirm in image)';
+      for (const key of ['lens_color', 'color', 'lens']) {
+        if (components[key] && components[key].status === NV) {
+          components[key] = { ...components[key], value: hint, evidence: 'name', status: 'VERIFIED' }; verified++; break;
+        }
+      }
+    }
   } catch {}
   try {
     const st = X.steering(p);

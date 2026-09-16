@@ -1,53 +1,107 @@
 # DIAMOND WDI AI Content & Short Video Studio
 
-Local web app for turning WDI product data + `Present(Short-vdo).xlsx` templates into Thai marketing content and Google Flow-ready scene prompts.
+Local web app for turning WDI product data + Short-vdo workbook templates into
+marketing content, Google Flow-ready scene prompts, and AI-generated Product
+Sheet reference prompts. Includes a local Production Memory (SQLite) that tracks
+jobs, versions, QC, publishing, campaigns, and per-product identity sheets.
 
-## Data sources
-- `D:\Windows\Document\VSCode\ex\Present(Get-web-wdi).xlsx`
-- `D:\Windows\Document\VSCode\ex\Present(Short-vdo).xlsx`
+## Data sources (read-only masters, never modified by the app)
 
-The current product workbook contains 1,030 products and the video workbook contains 6 usable series.
-The original Excel files are read-only inputs and are not modified by this app.
+- `data/Present(Get-web-wdi).xlsx` — product master (1,030 rows, 922 unique codes)
+- `data/Present(Short-vdo)ล่าสุด.xlsx` — video workbook:
+  - S01–S17 production templates (`แผ่นงาน1`, EX01 example excluded)
+  - V01–V15 user-facing series (`Series Selector v2`)
+  - C01–C09 category prompt matrix + library
+  - `AI Prompt Builder` blocks, `Platform Output`, `Product Truth Schema`
+- `data/WDI-Fitment-Master.xlsx` — verified fitment evidence
+
+Set `VIDEO_FILE` / `PRODUCT_FILE` in `.env` to point at alternate workbooks.
+
+## Workflow
+
+```text
+PRODUCT → PRODUCT SHEET → C + V → AUTO S → VIDEO PROMPT → Flow
+```
+
+1. Pick a product → system builds a **Product Sheet** (identity card).
+2. Pick a V intent + category (auto-suggested, overridable) → system maps S.
+3. Generate → Content Pack JSON (script, voice-over, scenes, Flow prompts,
+   image-to-video prompt, caption, CTA, source facts, QA).
+4. QC → Publish tracking per platform, with full version history.
+
+## Product Sheet (identity layer)
+
+- Deterministic, evidence-based builder (`sheets.mjs`), category-aware
+  schemas (C01–C09 + garment). Unverifiable fields stay `[NOT_VERIFIED]`.
+- Versioned per product; source/category changes create new versions.
+- Statuses: `DRAFT` → `NEEDS_REVIEW` → `VERIFIED`.
+- `POST /api/sheet-prompt` uses vision AI to write a golden-pattern
+  reference-sheet prompt, saved onto the sheet and reused by video prompts.
+
+## Production Memory (SQLite, `data/wdi-production.db`)
+
+Tables: `products`, `prompt_series`, `production_jobs` (unique product+V),
+`production_versions` (append-only, `is_current`), `production_actions`
+(append-only log), `publish_status`, `campaigns`, `campaign_items`,
+`ai_memory`, `product_sheets`, `product_sheet_references`,
+`product_sheet_actions`. Masters are upserted, history is never deleted.
+On read-only hosts (Vercel) the DB falls back to in-memory mode.
 
 ## Features
-- Search products by code/name/description.
-- Filter by Category, Sub Category, Car Brand and Car Model when those columns exist in the source workbook.
-- Select one of the Short-vdo production series.
-- Generate a Content Pack with script, voice-over, scenes, Flow prompts, image-to-video prompt, caption, CTA and source facts.
-- Export the selected production package as JSON.
-- Uses `.env` for the OpenAI key and model; `.env` is ignored by Git.
+
+- Search/filter products (code, name, category, brand, model, job status).
+- V quick-pick + auto S mapping + duration (15/30/45s) + showcase/replacement mode.
+- Per-product Content Matrix (V01–V15 done/todo), status badges, dashboard,
+  Smart-Next suggestions, campaign progress.
+- Rule-based AI Assistant answering from the production DB
+  (`POST /api/assistant`) — quotes DB rows, never invents status.
+- Marketplace prompts, ad image generator, WDI image proxy (`/api/wdi/image`).
 
 ## Run
+
 ```powershell
 npm install
 npm start
 ```
+
 Open `http://localhost:3077`.
 
 ## Environment
+
 Copy `.env.example` to `.env` and set:
+
 ```env
 PORT=3077
-OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5.6-luna
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+VIDEO_FILE=data/Present(Short-vdo)ล่าสุด.xlsx
 ```
-Never commit `.env` or API keys.
 
-## API
-- `GET /api/health` — data counts + AI configuration status (never returns the key).
-- `GET /api/config` — non-secret environment status.
+Never commit `.env` or API keys. The local SQLite DB, backups, AI cache
+and logs are git-ignored (see `.gitignore`).
+
+## API (selection)
+
+- `GET /api/health` — counts + AI status + tracking backend (no secrets).
 - `GET /api/meta` — filter metadata.
-- `GET /api/products` — filtered product data.
-- `GET /api/templates` — normalized Short-vdo templates.
-- `POST /api/generate` — generate a Content Pack through OpenAI.
+- `GET /api/products` — filtered products (optional `limit`/`offset`).
+- `GET /api/templates` — S-series; `/api/series-v`, `/api/categories`,
+  `/api/platforms`, `/api/resolve-series`, `/api/category-suggest`.
+- `POST /api/generate` — `{product, vCode, categoryCode, duration, mode, force}`.
+- Tracking: `/api/track/select`, `/api/jobs/status`, `/api/job`,
+  `/api/versions`, `/api/version`, `/api/qc`, `/api/publish`,
+  `/api/dashboard`, `/api/next`, `/api/campaigns*`, `/api/memory*`,
+  `/api/memory/import`.
+- Sheets: `/api/sheet`, `/api/sheet/detail`, `/api/sheet/versions`,
+  `/api/sheet/verify`, `POST /api/sheet-prompt`.
+- Assistant: `POST /api/assistant`.
+- Images: `POST /api/image-generate` (`{prompt, w, h, mode}`).
 
 ## AI safety rules
-The generator treats the product workbook as the source of truth. It must not invent fitment, model/year, specifications, included parts, price, stock, warranty or claims. Real product images are references and should not be redesigned or altered.
 
-## Current verification
-- Excel input loading: PASS
-- Template loading: PASS
-- Local HTTP health endpoint: PASS
-- `.env` loading: PASS; key is detected without exposing its value
-- OpenAI request reaches the API: PASS at authentication/transport level
-- Full AI generation: currently blocked by the OpenAI account returning HTTP 429 `billing_not_active`; this is an account/billing state, not an app-code error. After billing/project activation, rerun the generation smoke test.
+Product workbook + verified fitment + Product Sheet are the source of truth.
+The generator must not invent fitment, model/year, specifications, included
+parts, price, stock, warranty, claims, colors, parts, views, or dimensions.
+Real product images are references and must not be redesigned or altered.
+Video prompts reuse the saved Product Sheet visual identity verbatim.
