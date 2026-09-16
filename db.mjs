@@ -127,6 +127,37 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON production_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_versions_job ON production_versions(job_id);
 CREATE INDEX IF NOT EXISTS idx_actions_job ON production_actions(job_id);
 CREATE INDEX IF NOT EXISTS idx_actions_time ON production_actions(created_at);
+CREATE TABLE IF NOT EXISTS product_sheets(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  version_number INTEGER NOT NULL,
+  source_snapshot TEXT DEFAULT '',
+  identity_json TEXT DEFAULT '',
+  reference_map_json TEXT DEFAULT '',
+  lock_rules_json TEXT DEFAULT '',
+  confidence INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'DRAFT',
+  created_at TEXT DEFAULT '',
+  updated_at TEXT DEFAULT '',
+  is_current INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS product_sheet_references(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_sheet_id INTEGER NOT NULL REFERENCES product_sheets(id),
+  image_url TEXT DEFAULT '',
+  source TEXT DEFAULT '',
+  view_type TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS product_sheet_actions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_sheet_id INTEGER NOT NULL REFERENCES product_sheets(id),
+  action_type TEXT NOT NULL,
+  action_data TEXT DEFAULT '',
+  created_at TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_sheets_product ON product_sheets(product_id);
 `;
 
 export function now() { return new Date().toISOString(); }
@@ -442,6 +473,58 @@ export function getMemory(type, scope = 'project') {
   const out = {};
   for (const r of initDb().prepare('SELECT memory_key,memory_value FROM ai_memory WHERE memory_type=? AND scope=?').all(type, scope)) out[r.memory_key] = r.memory_value;
   return out;
+}
+
+// ---------- PRODUCT SHEETS (identity layer, versioned, never overwrite) ----------
+export function getCurrentSheet(productId) {
+  const d = initDb();
+  const r = d.prepare('SELECT * FROM product_sheets WHERE product_id=? AND is_current=1').get(productId);
+  if (!r) return null;
+  r.references = d.prepare('SELECT image_url,source,view_type,notes FROM product_sheet_references WHERE product_sheet_id=? ORDER BY id').all(r.id);
+  return r;
+}
+
+export function getSheetVersions(productId) {
+  const d = initDb();
+  return d.prepare('SELECT id,version_number,confidence,status,is_current,created_at,updated_at FROM product_sheets WHERE product_id=? ORDER BY version_number').all(productId);
+}
+
+export function saveSheetVersion(productId, { snapshot, identity, refmap, locks, confidence = 0, status = 'DRAFT' }) {
+  const d = initDb();
+  const cur = d.prepare('SELECT COALESCE(MAX(version_number),0) AS m FROM product_sheets WHERE product_id=?').get(productId).m;
+  const n = cur + 1;
+  d.prepare('UPDATE product_sheets SET is_current=0 WHERE product_id=?').run(productId);
+  const ts = now();
+  const r = d.prepare(`INSERT INTO product_sheets
+    (product_id,version_number,source_snapshot,identity_json,reference_map_json,lock_rules_json,confidence,status,created_at,updated_at,is_current)
+    VALUES (?,?,?,?,?,?,?,?,?,?,1)`).run(productId, n,
+    JSON.stringify(snapshot || {}), JSON.stringify(identity || {}),
+    JSON.stringify(refmap || {}), JSON.stringify(locks || {}),
+    confidence, status, ts, ts);
+  return { id: Number(r.lastInsertRowid), version_number: n };
+}
+
+export function setSheetStatus(id, status, note = '') {
+  const d = initDb();
+  d.prepare('UPDATE product_sheets SET status=?, updated_at=? WHERE id=?').run(status, now(), id);
+  if (note || true) d.prepare('INSERT INTO product_sheet_actions (product_sheet_id,action_type,action_data,created_at) VALUES (?,?,?,?)')
+    .run(id, status === 'VERIFIED' ? 'SHEET_VERIFIED' : 'SHEET_STATUS', JSON.stringify({ status, note }), now());
+  return d.prepare('SELECT * FROM product_sheets WHERE id=?').get(id);
+}
+
+export function addSheetRefs(sheetId, refs) {
+  const d = initDb();
+  const stmt = d.prepare('INSERT INTO product_sheet_references (product_sheet_id,image_url,source,view_type,notes,created_at) VALUES (?,?,?,?,?,?)');
+  tx(() => { for (const r of refs) stmt.run(sheetId, r.url || '', r.source || '', r.view || '', r.notes || '', now()); });
+}
+
+export function logSheetAction(sheetId, type, data = {}) {
+  initDb().prepare('INSERT INTO product_sheet_actions (product_sheet_id,action_type,action_data,created_at) VALUES (?,?,?,?)')
+    .run(sheetId, type, JSON.stringify(data), now());
+}
+
+export function getSheetActions(sheetId, limit = 30) {
+  return initDb().prepare('SELECT * FROM product_sheet_actions WHERE product_sheet_id=? ORDER BY id DESC LIMIT ?').all(sheetId, limit);
 }
 
 export function dbFile() { return memoryMode ? ':memory:' : DB_FILE; }

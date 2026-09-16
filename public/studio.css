@@ -95,8 +95,8 @@ header{height:56px!important;padding:0 20px!important}
 #prodDetails>summary{cursor:pointer;padding:9px 12px;font-size:12px;color:var(--st-muted);list-style:none}
 #prodDetails>summary::-webkit-details-marker{display:none}
 #pdBody{padding:0 12px 10px;font-size:12.5px;line-height:1.7}
-#truthModal{position:fixed;inset:0;z-index:98;display:none;place-items:center;background:#04060acc;padding:18px}
-#truthModal.on{display:grid}
+#truthModal,#sheetModal{position:fixed;inset:0;z-index:98;display:none;place-items:center;background:#04060acc;padding:18px}
+#truthModal.on,#sheetModal.on{display:grid}
 .truth-card{width:min(640px,94vw);max-height:84vh;overflow:auto;background:#10161f;border:1px solid #344151;border-radius:16px;padding:16px 18px}
 .truth-card table{width:100%;border-collapse:collapse;font-size:13px}
 .truth-card td{padding:7px 8px;border-bottom:1px solid #232b36;vertical-align:top}
