@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS product_sheets(
   lock_rules_json TEXT DEFAULT '',
   confidence INTEGER DEFAULT 0,
   status TEXT DEFAULT 'DRAFT',
+  visual_prompt TEXT DEFAULT '',
   created_at TEXT DEFAULT '',
   updated_at TEXT DEFAULT '',
   is_current INTEGER DEFAULT 0
@@ -183,6 +184,7 @@ export function initDb() {
   // Verify writable: on Vercel the file open may succeed but writes fail.
   try {
     db.exec(SCHEMA);
+    try { db.exec("ALTER TABLE product_sheets ADD COLUMN visual_prompt TEXT DEFAULT ''"); } catch {}
     db.prepare('CREATE TABLE IF NOT EXISTS __wtest(id INTEGER PRIMARY KEY)').run();
     db.prepare('DROP TABLE __wtest').run();
   } catch {
@@ -525,6 +527,14 @@ export function logSheetAction(sheetId, type, data = {}) {
 
 export function getSheetActions(sheetId, limit = 30) {
   return initDb().prepare('SELECT * FROM product_sheet_actions WHERE product_sheet_id=? ORDER BY id DESC LIMIT ?').all(sheetId, limit);
+}
+
+export function setSheetVisual(sheetId, promptText) {
+  const d = initDb();
+  d.prepare('UPDATE product_sheets SET visual_prompt=?, updated_at=? WHERE id=?').run(String(promptText || '').slice(0, 8000), now(), sheetId);
+  d.prepare('INSERT INTO product_sheet_actions (product_sheet_id,action_type,action_data,created_at) VALUES (?,?,?,?)')
+    .run(sheetId, 'SHEET_PROMPT_SAVED', JSON.stringify({ chars: String(promptText || '').length }), now());
+  return d.prepare('SELECT * FROM product_sheets WHERE id=?').get(sheetId);
 }
 
 export function dbFile() { return memoryMode ? ':memory:' : DB_FILE; }

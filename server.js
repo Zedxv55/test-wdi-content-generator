@@ -6,7 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
-import { initDb, memoryMode, dbFile, getProductRow, getOrCreateJob, logAction, touchJob, createVersion, getVersions, getVersionOutput, getActions, setPublish, getPublish, setQC, productStatusSummary, codesStatus, getDashboard, getNextJobs, createCampaign, addCampaignItems, campaignProgress, setMemory, getMemory, getCurrentSheet, getSheetVersions, setSheetStatus, logSheetAction, getSheetActions } from './db.mjs';
+import { initDb, memoryMode, dbFile, getProductRow, getOrCreateJob, logAction, touchJob, createVersion, getVersions, getVersionOutput, getActions, setPublish, getPublish, setQC, productStatusSummary, codesStatus, getDashboard, getNextJobs, createCampaign, addCampaignItems, campaignProgress, setMemory, getMemory, getCurrentSheet, getSheetVersions, setSheetStatus, logSheetAction, getSheetActions, setSheetVisual } from './db.mjs';
 import { askAssistant } from './assistant.mjs';
 import { ensureSheet, sheetSummary, sheetPromptBlock } from './sheets.mjs';
 
@@ -148,7 +148,8 @@ function qaContentPack(d,p){
  const banned=[
   [/ใส่กับรถ(?:คัน)?ใดก็ได้|ใช้ได้กับรถทุก|ใช้ได้กับทุกรุ่น|ทุกคัน|all (?:cars|vehicles)|any (?:car|vehicle)/i,'ห้ามอ้างว่าใช้ได้กับรถทุกคันโดยไม่มี Fitment ที่ยืนยัน'],
   [/360(?:°|องศา)|หมุนรอบ|รอบตัว 360/i,'ห้ามอ้าง 360° เมื่อภาพไม่ได้เป็นมุมต่อเนื่องจริง'],
-  [/หน้าตัด\s*(?:PP|ABS)|PP base|ABS lens/i,'ตรวจคำเรียกวัสดุ: ใช้ เลนส์ PP / แป้น ABS ตาม Source Facts'],
+   [/หน้าตัด\s*(?:PP|ABS)|PP base|ABS lens/i,'ตรวจคำเรียกวัสดุ: ใช้ เลนส์ PP / แป้น ABS ตาม Source Facts'],
+   [/\b(back|rear|side|top|bottom)[\s-]*(view|angle|profile)\b/i,'อ้างมุมภาพ (back/side/top...) — ตรวจว่ามี reference รองรับจริง ไม่ใช่แต่งเพิ่ม'],
   [/front 3\/4|back view|side view/i,'ห้ามใช้ชื่อมุมภาพที่ AI เดาเองในข้อความการตลาด']
  ];
  for(const [re,msg] of banned)if(re.test(text))checks.push({status:'FAIL',message:msg});
@@ -167,7 +168,7 @@ function buildPromptV2(p,t,ctx){
  const runtime=`\n\nRUNTIME: TARGET DURATION ${dur} (${DURINFO[dur]||DURINFO['30s']}) Each Google Flow segment is about 10 seconds. Keep the OUTPUT JSON schema identical; the scenes array may contain more or fewer items to fit the duration. Reflect the target duration in the "duration" field of the output.`;
  return `You are the WDI/DIAMOND senior content engineer. Your job is PDCA: PLAN the correct video structure, DO generate the prompt pack, CHECK every claim and visual instruction against the supplied WDI product data AND the attached product images, then ACT by fixing anything unsafe before returning the final pack.
 
-SOURCE OF TRUTH:\n${JSON.stringify(p,null,2)}\n\nVIDEO SERIES:\n${JSON.stringify(t,null,2)}${seriesExtra?`\n\nSERIES CONSTRAINTS (from company workbook):\n${seriesExtra}`:''}${catSection}${globalRules}${ctx?.sheetBlock||''}\n\nATTACHED WDI PRODUCT IMAGES: ${images.length} image(s). You can see them in this request. FIRST classify every image as exactly one of: HERO_PRODUCT, REAL_PRODUCT_VIEW, CLOSE_UP_DETAIL, PACKAGING, TECHNICAL_DRAWING, VEHICLE_CONTEXT, INFOGRAPHIC, CONTACT_SHEET, UNKNOWN.
+SOURCE OF TRUTH:\n${JSON.stringify(p,null,2)}\n\nVIDEO SERIES:\n${JSON.stringify(t,null,2)}${seriesExtra?`\n\nSERIES CONSTRAINTS (from company workbook):\n${seriesExtra}`:''}${catSection}${globalRules}${ctx?.sheetBlock||''}${ctx?.visualBlock||''}\n\nATTACHED WDI PRODUCT IMAGES: ${images.length} image(s). You can see them in this request. FIRST classify every image as exactly one of: HERO_PRODUCT, REAL_PRODUCT_VIEW, CLOSE_UP_DETAIL, PACKAGING, TECHNICAL_DRAWING, VEHICLE_CONTEXT, INFOGRAPHIC, CONTACT_SHEET, UNKNOWN.
 
 VISUAL FIDELITY RULES (highest priority):
 - The real WDI images are the visual source of truth. Never redesign, improve, simplify, mirror, recolor, add, remove, merge, or reinterpret product geometry.
@@ -204,6 +205,12 @@ function verifiedLines(sheet){
   return out;
  }catch{return [];}
 }
+function cleanSheetPrompt(t){
+ let x=String(t||'').replace(/<unk>/gi,'').replace(/<[^>\n]{0,40}>/g,'').replace(/([^\n])\1{12,}/g,'$1').trim();
+ const m=x.search(/PRODUCT IDENTITY LOCK/i);
+ if(m>0)x=x.slice(m).trim();
+ return x;
+}
 app.post('/api/sheet-prompt',async(q,s)=>{try{
  const p=q.body.product;if(!p)return s.status(400).json({error:'ไม่พบสินค้า'});
  const hasOR=Boolean(process.env.OPENROUTER_API_KEY);if(!hasOR)return s.status(503).json({error:'ยังไม่ได้ตั้งค่า API Key ใน .env'});
@@ -216,18 +223,18 @@ app.post('/api/sheet-prompt',async(q,s)=>{try{
 ${JSON.stringify({code:p['Product Code'],name_th:p['Product Name (TH)'],name_en:p['Product Name (EN)'],category:p.Category,sub:p['Sub Category'],description_th:p['Description (TH)'],description_en:p['Description (EN)'],fitment:[p['Fitment Brands'],p['Fitment Models'],p['Fitment Contexts']].filter(Boolean).join(' | ')},null,2)}
 SHEET VERIFIED COMPONENTS: ${verified.length?verified.join(' | '):'(none — rely on visual observation only)'}
 CATEGORY: ${catRes.code}. ATTACHED IMAGES: ${images.length}.`;
- const instruction=`You are a product-identity prompt engineer for DIAMOND/WDI. Look at the attached WDI reference images carefully. Your ONLY output is ONE image-generation prompt (plain English text, no JSON, no explanations) that creates a PRODUCT REFERENCE / IDENTITY SHEET for the exact product shown.
+ const instruction=`You are a product-identity prompt engineer for DIAMOND/WDI. Look at the attached WDI reference images carefully. Your ONLY output is ONE image-generation prompt (plain English text, no JSON, no explanations) that creates a PRODUCT REFERENCE / IDENTITY SHEET for the exact product shown. Your response MUST start with the exact header line PRODUCT IDENTITY LOCK. Keep the entire prompt under 3500 characters. No preamble, no reasoning trace.
 
 Follow this doctrine (from the company identity-lock blueprint):
 - The reference images are the ONLY source of truth. Never redesign, improve, modernize, simplify, stylize or invent any part.
-- Describe ONLY what you can actually see: silhouette, each visible part with its position, colors, materials, surface texture, fasteners, markings. Enumerate EVERY visible part as its own bullet (lens/diffuser, housing, switch, stem, texture, screws, etc.) — do not summarize the product in one sentence.
+- Describe ONLY what you can actually see. Work PART-BY-PART with no shortcuts: for EVERY visible part write its own bullets covering shape, relative size, exact position, color, material and surface texture (lens/diffuser, housing, switch, stem, ribs/texture, fasteners, markings, packaging if visible). A one-sentence product summary is a failure — be exhaustive.
 - Classify each supplied image first (for yourself): real product photo / close-up detail / technical drawing / dimension reference / other. A technical drawing is NOT a camera angle.
-- DIMENSION LOCK: include exact dimensions ONLY if they are printed/visible in a supplied technical drawing. Quote the numbers exactly as printed. If no dimensions are visible, omit dimensions entirely — never guess.
-- LAYOUT: prescribe numbered views mapped to the supplied references (e.g. FRONT VIEW from hero, switch CLOSE-UP from detail, SIDE/PROFILE only if a side view exists, TECHNICAL LINE DRAWING only if supplied). Never request a view no reference supports.
-- VISUAL STYLE: clean automotive OEM product documentation on neutral white background, soft neutral studio lighting, high clarity. Explicitly forbid: cinematic/dramatic lighting, dark advertising backgrounds, decorations.
-- TEXT RULE: allow ONLY factual labels derivable from verified data or visible markings (product type, visible switch text, verified dimensions). Never copy banner/ad text, Thai script, phone numbers or spec tables from reference images into generatable text — describe their placement at most. Forbid inventing specifications, fitment, voltage, wattage, materials grade, certifications, part numbers, logos, brand names.
-- Structure the prompt with these exact section headers in order: PRODUCT IDENTITY LOCK, PRODUCT, CRITICAL SHAPE LOCK, DIMENSION LOCK (omit section if none verified), PRODUCT SHEET LAYOUT, VISUAL STYLE, TEXT RULE, PRODUCT FIDELITY.
-- End with a PRODUCT FIDELITY section that repeats the SAME positions and details stated above (be self-consistent) plus a line stating this is an identity reference, not an advertisement.
+- DIMENSION LOCK: include exact dimensions ONLY if they are printed/visible in a supplied technical drawing. Quote the numbers exactly as printed and instruct to show them clearly and proportionally (e.g. DIMENSION CALLOUT view). If no dimensions are visible, omit the DIMENSION LOCK section entirely — never guess.
+- LAYOUT: prescribe numbered views mapped to the supplied references, aiming for this full set whenever references support it: 1. FRONT VIEW (full product, large, centered) 2. TOP/SWITCH CLOSE-UP (enlarged detail) 3. SIDE/PROFILE VIEW (depth and thickness) 4. TECHNICAL LINE DRAWING (only if a drawing is supplied, matching it) 5. DIMENSION CALLOUT (verified numbers only). These titles are COMPOSITION INSTRUCTIONS FOR THE GENERATOR ONLY — state explicitly in the prompt that view titles, numbers and headings must NEVER be drawn as visible text, captions or watermarks anywhere in the image. Never request a view no reference supports; state the main product must be large and easy to inspect with consistent scale and alignment.
+- VISUAL STYLE: clean automotive OEM product documentation on neutral white background, soft neutral studio lighting, high clarity, accurate material and surface texture, minimal shadows. Explicitly forbid: cinematic/dramatic lighting, dark advertising backgrounds, decorations, and ANY rendered headings, titles, captions, watermarks or overlaid graphics.
+- TEXT RULE: the image must contain as little text as possible. The ONLY permitted text in the entire image is a short explicit allowlist you define (verified dimension numbers and at most one short factual product-type label); each allowed item may appear at most once, small, inside its own callout area. Everything else — view titles, section headers, spec sentences, banner text, Thai script, phone numbers, tables — is FORBIDDEN in the image; describe placements only. Forbid inventing specifications, fitment, voltage, wattage, materials grade, certifications, part numbers, logos, brand names.
+- Structure the prompt with these exact section headers in order: PRODUCT IDENTITY LOCK, PRODUCT, CRITICAL SHAPE LOCK, DIMENSION LOCK (omit section if none verified), PRODUCT SHEET LAYOUT, VISUAL STYLE, TEXT RULE, PRODUCT FIDELITY. Write thoroughly — a complete prompt, not a summary.
+- End with a PRODUCT FIDELITY section (6+ bullets) that repeats the SAME positions and details stated above (be self-consistent: silhouette, every part shape/position, colors, textures, dimensions) plus a line stating this is an identity reference, not an advertisement. Prioritize visual accuracy over aesthetics throughout.
 
 ${brief}`;
  const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});
@@ -235,14 +242,17 @@ ${brief}`;
  for(const u of images)content.push({type:'image_url',image_url:{url:u}});
  let text='';
  for(let attempt=0;attempt<2;attempt++){
-  const r=await ai.chat.completions.create({model,messages:[{role:'user',content}],temperature:0.2,max_tokens:3000});
+  const r=await ai.chat.completions.create({model,messages:[{role:'user',content}],temperature:0.2,max_tokens:6000});
   const msg=r.choices?.[0]?.message||{};
   text=typeof msg.content==='string'?msg.content.trim():(Array.isArray(msg.content)?msg.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim():String(msg.reasoning||'').trim());
   text=text.replace(/^```(?:\w+)?\s*/,'').replace(/\s*```$/,'').trim();
-  if(text.length>400)break;
+  text=cleanSheetPrompt(text);
+  if(text.length>=800&&text.length<=6000)break;
  }
- if(text.length<400)return s.status(502).json({error:'AI ตอบสั้นเกินไป — ลองกดใหม่อีกครั้ง',model});
- s.json({ok:true,prompt:text,model,imageCount:images.length,sheet:sheet?{id:sheet.id,version:sheet.version_number,status:sheet.status}:null});
+ if(text.length>6000){const cut=text.slice(0,6000);const p=Math.max(cut.lastIndexOf('.'),cut.lastIndexOf('\n'));text=(p>3000?cut.slice(0,p+1):cut).trim();}
+ if(text.length<800)return s.status(502).json({error:'AI ตอบสั้นเกินไป — ลองกดใหม่อีกครั้ง',model});
+ if(sheet){try{setSheetVisual(sheet.id,text);}catch{}}
+ s.json({ok:true,prompt:text,model,imageCount:images.length,sheet:sheet?{id:sheet.id,version:sheet.version_number,status:sheet.status}:null,saved:!!sheet});
 }catch(e){const status=e?.status===401?502:e?.status===429?503:500;s.status(status).json({error:e?.message||'สร้าง prompt ไม่สำเร็จ',code:e?.code||null,status:e?.status||null});}});
 app.post('/api/image-generate',async(q,s)=>{try{const prompt=clean(q.body?.prompt);if(!prompt)return s.status(400).json({ok:false,error:'Prompt required'});const mode=clean(q.body?.mode)||'hero';const square=/detail|compare|1:1|\bsquare\b/i.test(mode);let w=Number(q.body?.w)||1024,h=Number(q.body?.h)||(square?1024:1280);w=Math.max(512,Math.min(1536,w));h=Math.max(512,Math.min(1536,h));const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0,1500))}?width=${w}&height=${h}&nologo=true&model=flux&seed=${Math.floor(Math.random()*999999)}`;const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),110000);let r;try{r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 WDI-Content-Generator'},signal:ctrl.signal});}finally{clearTimeout(timer);}if(!r.ok)return s.status(r.status).json({ok:false,provider:'pollinations',error:`Image provider HTTP ${r.status} (free tier busy, try again)`});const mime=r.headers.get('content-type')||'image/jpeg';const b=Buffer.from(await r.arrayBuffer());if(b.length<5000)return s.status(502).json({ok:false,provider:'pollinations',error:'Image provider returned empty image, try again'});s.json({ok:true,provider:'pollinations',model:'flux',mime,data:b.toString('base64')});}catch(e){s.status(500).json({ok:false,provider:'pollinations',error:e.name==='AbortError'?'Image generation timed out (free tier busy), try again':(e.message||'image generation failed')});}});
 function buildMarketplacePrompt(p){const fit=[p['Fitment Brands'],p['Fitment Models'],p['Fitment Contexts'],p['Fitment Evidence']].filter(Boolean).join(' | ');return 'You are a senior automotive e-commerce art director for WDI / DIAMOND (ไฟตราเพชร). Create reusable professional English image prompts for one exact product. PRODUCT DATA:\n'+JSON.stringify(p,null,2)+'\nVERIFIED WDI FITMENT DATA (navigation/evidence only; never infer):\n'+(fit||'NONE')+'\n\nBRAND SYSTEM: DIAMOND / ไฟตราเพชร; midnight navy, electric blue, metallic silver, diamond yellow/gold, premium automotive advertising. The supplied DIAMOND logo asset is authoritative; never redraw, distort, recolor or invent it.\n\nPRODUCT LOCK: preserve exact product silhouette, proportions, lens, housing, bezel, reflector, connector, wire count, mounting points, screws/clips, materials, color, finish and visible markings from the supplied reference. No redesign, beautification, mirroring, recoloring, merging variants or invented components.\n\nFITMENT LOCK: show a vehicle only if verified WDI fitment is present. If present, use only the exact supplied brand/model/year/variant context. Never infer compatibility from visual similarity.\n\nOUTPUT: JSON only: {"prompts":{"hero":"","detail":"","context":"","catalog":"","social":""},"negative_prompt":"","brand_rules":"","source_facts":""}. All prompts must describe photorealistic premium commercial imagery, 4:5 except detail 1:1, strong hierarchy, cinematic three-point lighting, electric-blue rim light, warm gold highlights, realistic reflections, clean negative space for post-production text. For technical details, mention only features explicitly present in PRODUCT DATA or clearly visible in the supplied reference; if a feature is not verified, use generic visible-detail language and do not name it. Never invent connector type, wire count, lens system, reflector, adjustment mechanism, bulb, LED behavior, materials, dimensions or specifications. Do not rely on AI-generated Thai typography; text should be added later. Negative prompt must include wrong product, changed geometry, wrong connector, invented fitment, fake logo, fake text, fake specs, duplicate, extra parts, deformation, cartoon, surreal, excessive VFX.';}
@@ -269,7 +279,9 @@ app.post('/api/generate',async(q,s)=>{
      if(sheet&&sheet.status!=='VERIFIED')sheetWarn=`Product Sheet v${sheet.version_number} ยังไม่ VERIFIED (${sheet.status}) — ตรวจ sheet ก่อนเผยแพร่`;
     }catch(err){sheet=null;}
     const sheetMeta=sheet?{id:sheet.id,version:sheet.version_number,status:sheet.status,confidence:sheet.confidence}:null;
-    const blocks=loadPromptBlocks();const ctx={cat:catRes.cat,blocks,duration:dur,sheetBlock:sheet?sheetPromptBlock(sheet,mode):'',sheetMeta};
+    const blocks=loadPromptBlocks();
+    const visualBlock=(sheet&&sheet.visual_prompt)?`\n\nAPPROVED VISUAL IDENTITY (Product Sheet #${sheet.id} v${sheet.version_number} — SAME direction as the reference sheet, overrides any conflicting creative text):\n${String(sheet.visual_prompt).slice(0,2500)}\n\nHARD RULES FOR EVERY SCENE (flow_prompt, visual, script):\n- Describe ONLY parts, colors, materials and views present in the identity above or the attached reference images.\n- NEVER invent colors, parts (screws, sockets, wires, vents, bulbs, mounts) or views (back/rear/side/top/bottom) beyond the references.\n- Every scene MUST state which supplied reference image it uses. If a view has no reference, cut cleanly to a verified view instead of inventing one.\n- V/S creative direction must not rewrite this identity. On conflict, this identity wins.`:'';
+    const ctx={cat:catRes.cat,blocks,duration:dur,sheetBlock:sheet?sheetPromptBlock(sheet,mode):'',sheetMeta,visualBlock};
     const cacheKey=crypto.createHash('sha256').update(JSON.stringify({v:6,model,vCode:clean(q.body.vCode).toUpperCase(),sCode:res.sCode,category:catRes.code,duration:dur,mode,sheetV:sheetMeta?sheetMeta.version:0,product:p,images})).digest('hex');const cache=loadContentCache();
     if(!q.body.force&&cache[cacheKey])return s.json({...cache[cacheKey],_meta:{model,cache:true,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,duration:dur,mode,jobId,sheet:sheetMeta,sheetWarn,qa:cache[cacheKey].qa||null}});
    if(jobId){try{logAction(jobId,'GENERATE_STARTED',{v:jobV,s:res.sCode,category:catRes.code});if(clean(q.body.vCode))logAction(jobId,'S_AUTO_MAPPED',{v:jobV,s:res.sCode,reason:res.reason});touchJob(jobId,{status:'IN_PROGRESS',current_stage:'AI_GENERATING'});}catch(err){}}
