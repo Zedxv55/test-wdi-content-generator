@@ -11,3 +11,10 @@ data/wdi-catalog.last-good.json
 public/*.bak*
 .DS_Store
 .vercel
+# production memory (local SQLite + backups + AI cache) — never commit
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/backups/
+data/content-pack-cache.json

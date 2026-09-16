@@ -1,0 +1,173 @@
+/* ============================================================
+   WDI STUDIO — Phase A override layer (UX architecture only)
+   Loaded AFTER style.css + ux.css. Remove this file to restore
+   previous UI. No business logic lives here.
+   ============================================================ */
+:root{
+  --st-bg:#0a0d12; --st-panel:#10151d; --st-panel2:#141b25;
+  --st-line:#26303d; --st-text:#eef2f7; --st-muted:#9aa5b5;
+  --st-accent:#ffd76a; --st-ok:#2ed573; --st-warn:#ff9f43;
+  --st-bad:#ff6b6b; --st-info:#4aa3ff; --st-r:14px;
+}
+
+/* ---------- A3 main grid: 22 / 56 / 22 ---------- */
+.workspace-main{
+  grid-template-columns:minmax(260px,22%) minmax(560px,1fr) minmax(280px,22%)!important;
+  gap:14px!important;
+}
+.editor{min-width:0}
+
+/* ---------- A1 minimal header ---------- */
+header{height:56px!important;padding:0 20px!important}
+.brand-sub{display:none!important}
+.header-status{flex-direction:row!important;align-items:center!important;gap:10px!important}
+#health{font-size:12px!important;font-weight:700}
+#dataSource{font-size:11px!important;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbtn{border:1px solid #343b48;border-radius:10px;background:#141b25;color:#eef2f7;
+  font-size:12px;font-weight:700;padding:8px 12px;cursor:pointer;white-space:nowrap}
+.hbtn:hover{border-color:var(--st-accent)}
+.hbtn.primary{background:var(--st-accent);border-color:var(--st-accent);color:#141414}
+#systemBox{position:relative}
+#systemBox summary{list-style:none;cursor:pointer;font-size:12px;color:var(--st-muted);
+  border:1px solid #343b48;border-radius:10px;padding:8px 12px;background:#141b25;white-space:nowrap}
+#systemBox summary::-webkit-details-marker{display:none}
+#systemBox summary:hover{border-color:var(--st-accent);color:#fff}
+#systemBox[open] .sysdrop{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:300px;
+  background:#10161f;border:1px solid #344151;border-radius:12px;padding:12px 14px;
+  font-size:12px;line-height:1.7;color:#c8d0da;box-shadow:0 18px 50px #000a}
+
+/* ---------- A2 work queue bar (replaces technical pills) ---------- */
+#dashstrip{display:flex!important;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:12px 16px!important;margin:0 0 12px!important;
+  background:linear-gradient(180deg,#111824,#0d131b)!important;
+  border:1px solid #2b3442!important;border-radius:var(--st-r)!important;font-size:13px}
+.q-title{font-weight:800;font-size:14px}
+.q-count{font-size:22px;font-weight:800;color:var(--st-accent)}
+.q-count small{font-size:12px;color:var(--st-muted);font-weight:600}
+.q-chips{display:flex;gap:6px;flex-wrap:wrap}
+.q-chip{background:#161e29;border:1px solid #2c3542;border-radius:999px;
+  padding:4px 11px;font-size:12px;white-space:nowrap}
+.q-chip b{font-weight:800}
+.q-next{margin-left:auto;display:flex;align-items:center;gap:10px}
+#btnNext{background:var(--st-accent);border:1px solid var(--st-accent);color:#141414;
+  border-radius:11px;padding:11px 20px;font-size:14px;font-weight:800;cursor:pointer;white-space:nowrap}
+#btnNext:hover{filter:brightness(1.07)}
+.q-suggest{font-size:12px;color:var(--st-muted);max-width:340px}
+
+/* ---------- toolbar: compact second row ---------- */
+.toolbar{grid-template-columns:minmax(280px,1fr) 150px 130px 130px 120px auto!important}
+.toolbar button{min-height:40px}
+
+/* ---------- A4 left navigator ---------- */
+.panel-title h2{font-size:14px}
+#statusChips{display:flex;gap:5px;flex-wrap:wrap;padding:9px 10px;border-bottom:1px solid #252c37}
+.schip{border:1px solid #303846;background:#131a24;color:#cfd7e2;border-radius:999px;
+  font-size:11px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+.schip:hover{border-color:var(--st-accent)}
+.schip.on{background:#20293a;border-color:var(--st-accent);color:#fff;font-weight:700}
+.item .vprog{display:block;font-size:11px;color:var(--st-muted);margin-top:4px}
+.item .vprog b{color:var(--st-accent)}
+/* Phase D: thumbs + collapsible facts + staged progress */
+.thumbs{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;grid-column:1}
+.thumbs img{width:66px;height:66px;object-fit:cover;border-radius:9px;cursor:pointer;border:1px solid #2b3441;background:#fff}
+.thumbs img:hover{border-color:var(--st-accent)}
+.facts>summary{list-style:none;cursor:pointer;font-weight:800;margin-bottom:8px}
+.facts>summary::-webkit-details-marker{display:none}
+.facts>summary small{font-weight:400}
+#output .loading span{font-size:12px;line-height:1.8}
+/* Phase C: category secondary to V + duration segmented */
+.catrow{font-size:12px;opacity:.92}
+.catrow select{max-width:190px}
+#durSeg .schip.on{background:#20293a;border-color:var(--st-accent);color:#fff;font-weight:700}
+/* Phase B: 1-glance state accent (restrained, only meaningful states) */
+#products .item[data-st="PUBLISHED"]{box-shadow:inset 3px 0 0 var(--st-ok)}
+#products .item[data-st="ERROR"],#products .item[data-st="REVISION_REQUIRED"]{box-shadow:inset 3px 0 0 var(--st-bad)}
+#products .item[data-st="IN_PROGRESS"]{box-shadow:inset 3px 0 0 var(--st-info)}
+#products .item[data-st="QC_PASSED"],#products .item[data-st="READY_TO_PUBLISH"]{box-shadow:inset 3px 0 0 var(--st-accent)}
+#statusChips{display:flex;gap:5px;flex-wrap:wrap;padding:9px 10px;border-bottom:1px solid #252c37;align-items:center}
+
+/* ---------- A5/A6/A7 center workspace steps ---------- */
+.step{margin:0 0 14px;padding:14px 16px;background:var(--st-panel);
+  border:1px solid var(--st-line);border-radius:var(--st-r)}
+.step-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.step-no{display:inline-flex;width:24px;height:24px;flex:none;align-items:center;justify-content:center;
+  border-radius:50%;background:#202936;color:var(--st-accent);font-size:12px;font-weight:800}
+.step-head b{font-size:14px}
+.step-head small{color:var(--st-muted);font-size:11px}
+.product-head h1{font-size:24px!important}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.pill{font-size:11px;border:1px solid #35404d;border-radius:999px;padding:3px 10px;color:#cfd7e2;background:#141b25}
+.pill.ok{border-color:#2f6b4a;color:#7fca9b}
+.pill.warn{border-color:#8a6a32;color:#e8c877}
+.facts.collapsible summary{cursor:pointer;font-size:12px;color:var(--st-accent);margin-top:8px}
+
+/* generate primary */
+#btnGenerate{width:100%;min-height:54px!important;font-size:16px!important;font-weight:800!important;
+  background:var(--st-accent)!important;border-color:var(--st-accent)!important;color:#141414!important;
+  border-radius:13px!important}
+#btnGenerate:hover{filter:brightness(1.06)}
+.gen-sub{text-align:center;font-size:12px;color:var(--st-muted);margin-top:8px}
+.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.action-row .secondary{flex:1;min-height:42px}
+
+/* ---------- A8 right creative cards ---------- */
+.vgrid{display:flex;flex-direction:column;gap:7px;padding:10px}
+.vcard{text-align:left;background:#121924;border:1px solid #2b3441;border-radius:12px;
+  padding:10px 12px;cursor:pointer;color:#e9edf3;width:100%}
+.vcard:hover{border-color:var(--st-accent)}
+.vcard.on{border-color:var(--st-accent);background:#1a2230;box-shadow:inset 3px 0 0 var(--st-accent)}
+.vcard b{display:block;font-size:13px}
+.vcard small{display:block;color:var(--st-muted);font-size:11px;margin-top:3px;line-height:1.4}
+.vcard .vdur{float:right;color:var(--st-accent);font-size:11px;font-weight:700}
+#engineBox{margin:0 10px 10px;border:1px solid #2b3441;border-radius:12px;background:#0d1320}
+#engineBox summary{cursor:pointer;padding:9px 12px;font-size:12px;color:var(--st-muted)}
+#engineBox .template{opacity:.8}
+
+/* ---------- A9 drawer ---------- */
+#drawerScrim{position:fixed;inset:0;background:#04060acc;z-index:96;display:none}
+#drawerScrim.on{display:block}
+#assistantPanel{position:fixed!important;top:0!important;right:0!important;bottom:0!important;
+  width:min(400px,94vw)!important;max-height:none!important;z-index:97!important;border-radius:0!important;
+  transform:translateX(105%);transition:transform .22s ease;display:flex!important}
+#assistantPanel.open{transform:none}
+#assistantFab{display:none!important}
+.drawer-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #2a3340;font-weight:800}
+.drawer-head button{margin-left:auto}
+.qprompts{display:flex;gap:6px;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid #232b36}
+.qprompts button{font-size:11px;border:1px solid #303846;background:#131a24;color:#cfd7e2;
+  border-radius:999px;padding:5px 10px;cursor:pointer}
+.qprompts button:hover{border-color:var(--st-accent)}
+
+/* ---------- A10 output hierarchy ---------- */
+.result h2{font-size:19px}
+.out-sec{margin-top:12px;border:1px solid #2b3441;border-radius:12px;background:#0e141d;overflow:hidden}
+.out-sec>summary{cursor:pointer;padding:11px 14px;font-size:13px;font-weight:700;list-style:none}
+.out-sec>summary::-webkit-details-marker{display:none}
+.out-sec>summary:hover{color:var(--st-accent)}
+.out-sec .sec-body{padding:0 14px 14px}
+.out-hero{border-color:#4a5a35}
+.copybar{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+.copybar button{flex:1;min-height:40px;white-space:nowrap}
+
+/* ---------- misc ---------- */
+.empty-state{text-align:center;color:#8b95a4;padding:36px 16px;font-size:13px;line-height:1.7}
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible,
+summary:focus-visible{outline:2px solid var(--st-accent);outline-offset:2px}
+button:disabled{opacity:.55;cursor:wait}
+
+/* ---------- A15 responsive (keep breakpoints, adapt grid) ---------- */
+@media(max-width:1180px){
+  .workspace-main{grid-template-columns:200px minmax(0,1fr)!important}
+  .templates{grid-column:1/-1;min-height:260px!important;max-height:300px!important}
+  .vgrid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+  .q-next{margin-left:0;width:100%}
+  #btnNext{flex:1}
+}
+@media(max-width:760px){
+  .workspace-main{grid-template-columns:1fr!important}
+  .products-panel,.editor,.templates{grid-column:1!important;min-height:auto!important;max-height:none!important}
+  .toolbar{display:flex!important;flex-direction:column}
+  header{flex-wrap:wrap;height:auto!important;padding:10px 14px!important;row-gap:8px}
+  #dataSource{display:none}
+  #assistantPanel{width:100vw!important}
+}

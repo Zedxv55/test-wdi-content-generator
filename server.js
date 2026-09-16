@@ -6,8 +6,11 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { initDb, memoryMode, dbFile, getOrCreateJob, logAction, touchJob, createVersion, getVersions, getVersionOutput, getActions, setPublish, getPublish, setQC, productStatusSummary, codesStatus, getDashboard, getNextJobs, createCampaign, addCampaignItems, campaignProgress, setMemory, getMemory } from './db.mjs';
+import { askAssistant } from './assistant.mjs';
 
 dotenv.config();
+initDb();
 const app = express();
 const PORT = Number(process.env.PORT || 3077);
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -76,7 +79,7 @@ const VMAP={V01:'S13',V02:'S07',V03:'S03',V04:'S04',V05:'S11',V06:'S01',V07:'S14
 const GENERIC_V=new Set(['V01','V02','V13','V14','V15']);
 function resolveSeries(vCode,catCode){const v=clean(vCode).toUpperCase();let s=VMAP[v]||null;let reason='';if(!s){s='S01';reason='ไม่ระบุ V — ใช้ S01 ค่าเริ่มต้น';}else reason=`${v} → ${s} (mapping)`;if(GENERIC_V.has(v)){if(catCode==='C07'&&s!=='S04'){s='S04';reason+=` + C07 override → S04`;}else if(catCode==='C08'&&s!=='S11'){s='S11';reason+=` + C08 override → S11`;}}const ts=loadTemplates();let idx=ts.findIndex(r=>clean(r['รหัสซีรีส์'])===s);if(idx<0)idx=0;const row=ts[idx];return{sCode:clean(row['รหัสซีรีส์'])||('T'+(idx+1)),sIndex:idx,row,reason};}
 function envStatus(){const hasOR=Boolean(process.env.OPENROUTER_API_KEY);const hasOA=Boolean(process.env.OPENAI_API_KEY);const provider=process.env.AI_PROVIDER||(hasOR?'openrouter':hasOA?'openai':'openrouter');const model=provider==='openrouter'?(process.env.OPENROUTER_MODEL||'minimax/minimax-m3:free'):(process.env.OPENAI_MODEL||'gpt-4o-mini');return{dotenvLoaded:true,provider,openrouterKeyConfigured:hasOR,openaiKeyConfigured:hasOA,model,port:PORT};}
-app.get('/api/health',(q,s)=>{try{s.json({ok:true,products:loadProducts().length,templates:loadTemplates().length,fitmentRows:loadFitmentRows().length,ai:envStatus()});}catch(e){s.status(500).json({ok:false,error:e.message});}});
+app.get('/api/health',(q,s)=>{try{s.json({ok:true,products:loadProducts().length,templates:loadTemplates().length,fitmentRows:loadFitmentRows().length,ai:envStatus(),tracking:{backend:memoryMode?'memory':'sqlite',db:dbFile()}});}catch(e){s.status(500).json({ok:false,error:e.message});}});
 app.get('/api/config',(q,s)=>s.json(envStatus()));
 app.get('/api/meta',(q,s)=>{const r=loadProducts();const f=loadFitmentRows();s.json({total:r.length,categories:unique(r.map(x=>x.Category)),subCategories:unique(r.map(x=>x['Sub Category'])),brands:unique(f.map(x=>x.Car_Brand)),models:unique(f.map(x=>x.Car_Model))});});
 app.get('/api/templates',(q,s)=>s.json(loadTemplates().map((r,i)=>({
@@ -131,6 +134,9 @@ function buildPromptV2(p,t,ctx){
  const catSection=cat?`\n\nCATEGORY MODE [${cat.code} ${cat.name}]:\n${cat.core}\nSCENE DIRECTION: ${cat.direction}\nDO-NOT-GUESS: ${cat.dontGuess}\nCATEGORY NEGATIVE: ${cat.negative}`:'';
  const gb=ctx?.blocks?.['01 GLOBAL RULES']?.text||'';
  const globalRules=gb?`\n\nGLOBAL ORCHESTRATOR RULES (from company Prompt Builder):\n${gb}`:'';
+ const dur=ctx?.duration||'30s';
+ const DURINFO={'15s':'15 seconds total: hook + 2 concise beats + end card. Prefer 2 scenes when 2 suffice, do not pad.','30s':'30 seconds total: classic 3x10s segment structure (Segment 1/2/3).','45s':'45 seconds total: extended 4-5 segment structure. Add one extra detail/proof beat and a stronger closing card; keep every scene grounded in verified references.'};
+ const runtime=`\n\nRUNTIME: TARGET DURATION ${dur} (${DURINFO[dur]||DURINFO['30s']}) Each Google Flow segment is about 10 seconds. Keep the OUTPUT JSON schema identical; the scenes array may contain more or fewer items to fit the duration. Reflect the target duration in the "duration" field of the output.`;
  return `You are the WDI/DIAMOND senior content engineer. Your job is PDCA: PLAN the correct video structure, DO generate the prompt pack, CHECK every claim and visual instruction against the supplied WDI product data AND the attached product images, then ACT by fixing anything unsafe before returning the final pack.
 
 SOURCE OF TRUTH:\n${JSON.stringify(p,null,2)}\n\nVIDEO SERIES:\n${JSON.stringify(t,null,2)}${seriesExtra?`\n\nSERIES CONSTRAINTS (from company workbook):\n${seriesExtra}`:''}${catSection}${globalRules}\n\nATTACHED WDI PRODUCT IMAGES: ${images.length} image(s). You can see them in this request. FIRST classify every image as exactly one of: HERO_PRODUCT, REAL_PRODUCT_VIEW, CLOSE_UP_DETAIL, PACKAGING, TECHNICAL_DRAWING, VEHICLE_CONTEXT, INFOGRAPHIC, CONTACT_SHEET, UNKNOWN.
@@ -156,6 +162,8 @@ EFFICIENCY RULES:
 - Do not create a separate image-analysis call; classify the supplied images inside this same response.
 - Keep Flow prompts concise and directly pasteable. Prefer 3 scenes over unnecessary extra generations.
 
+${runtime}
+
 OUTPUT JSON ONLY:\n{"series":"","duration":"","hook":"","script":"","voiceover":"","visual_asset_audit":[{"image":"","classification":"","what_is_visible":"","allowed_use":""}],"scenes":[{"time":"","reference":"","start_source":"","visual":"","flow_prompt":""}],"image_to_video_prompt":"REFERENCE MAPPING: Scene 1 = ...; Scene 2 = ...; Scene 3 = ...","caption":"","hashtags":[],"cta":"","source_facts":[],"warnings":[],'platform_captions':{"facebook":"","tiktok":"","instagram":"","line":"","shopee":""}}`;
 }
 
@@ -163,6 +171,7 @@ app.post('/api/image-generate',async(q,s)=>{try{const prompt=clean(q.body?.promp
 function buildMarketplacePrompt(p){const fit=[p['Fitment Brands'],p['Fitment Models'],p['Fitment Contexts'],p['Fitment Evidence']].filter(Boolean).join(' | ');return 'You are a senior automotive e-commerce art director for WDI / DIAMOND (ไฟตราเพชร). Create reusable professional English image prompts for one exact product. PRODUCT DATA:\n'+JSON.stringify(p,null,2)+'\nVERIFIED WDI FITMENT DATA (navigation/evidence only; never infer):\n'+(fit||'NONE')+'\n\nBRAND SYSTEM: DIAMOND / ไฟตราเพชร; midnight navy, electric blue, metallic silver, diamond yellow/gold, premium automotive advertising. The supplied DIAMOND logo asset is authoritative; never redraw, distort, recolor or invent it.\n\nPRODUCT LOCK: preserve exact product silhouette, proportions, lens, housing, bezel, reflector, connector, wire count, mounting points, screws/clips, materials, color, finish and visible markings from the supplied reference. No redesign, beautification, mirroring, recoloring, merging variants or invented components.\n\nFITMENT LOCK: show a vehicle only if verified WDI fitment is present. If present, use only the exact supplied brand/model/year/variant context. Never infer compatibility from visual similarity.\n\nOUTPUT: JSON only: {"prompts":{"hero":"","detail":"","context":"","catalog":"","social":""},"negative_prompt":"","brand_rules":"","source_facts":""}. All prompts must describe photorealistic premium commercial imagery, 4:5 except detail 1:1, strong hierarchy, cinematic three-point lighting, electric-blue rim light, warm gold highlights, realistic reflections, clean negative space for post-production text. For technical details, mention only features explicitly present in PRODUCT DATA or clearly visible in the supplied reference; if a feature is not verified, use generic visible-detail language and do not name it. Never invent connector type, wire count, lens system, reflector, adjustment mechanism, bulb, LED behavior, materials, dimensions or specifications. Do not rely on AI-generated Thai typography; text should be added later. Negative prompt must include wrong product, changed geometry, wrong connector, invented fitment, fake logo, fake text, fake specs, duplicate, extra parts, deformation, cartoon, surreal, excessive VFX.';}
 app.post('/api/generate-marketplace',async(q,s)=>{try{const p=q.body.product;if(!p)return s.status(400).json({error:'Product required'});const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});const r=await ai.chat.completions.create({model:process.env.OPENROUTER_MODEL||'minimax/minimax-m3:free',messages:[{role:'user',content:buildMarketplacePrompt(p)}],temperature:0.45,max_tokens:4000});const text=String(r.choices?.[0]?.message?.content||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');try{s.json(JSON.parse(text));}catch{s.json({raw:text});}}catch(e){s.status(500).json({error:e.message});}});
 app.post('/api/generate',async(q,s)=>{
+ let track=null,jobId=null;
  try{
    const p=q.body.product;if(!p)return s.status(400).json({error:'ไม่พบสินค้า'});
    const ts=loadTemplates();
@@ -170,15 +179,20 @@ app.post('/api/generate',async(q,s)=>{
    let t,res;
    if(clean(q.body.vCode)){res=resolveSeries(q.body.vCode,catRes.code);t=res.row;}
    else{const templateId=Number(q.body.templateId)||0;t=ts[templateId];if(!t)return s.status(404).json({error:'ไม่พบ Video Template'});res={sCode:clean(t['รหัสซีรีส์'])||('T'+(templateId+1)),sIndex:templateId,reason:'legacy templateId'};}
+   const jobV=clean(q.body.vCode).toUpperCase()||('S:'+res.sCode);
+   try{track=getOrCreateJob(clean(p['Product Code'])||clean(p['Product URL'])||'UNKNOWN',jobV,{categoryCode:catRes.code,sCode:res.sCode});jobId=track.job.id;}catch(err){track=null;}
    const hasOR=Boolean(process.env.OPENROUTER_API_KEY),hasOA=Boolean(process.env.OPENAI_API_KEY);if(!hasOR&&!hasOA)return s.status(503).json({error:'ยังไม่ได้ตั้งค่า API Key ใน .env'});
     const images=productImageUrls(p);const model=hasOR&&(process.env.AI_PROVIDER!=='openai')?(process.env.OPENROUTER_MODEL||'thinkingmachines/inkling:free'):(process.env.OPENAI_MODEL||'gpt-4o-mini');
-    const blocks=loadPromptBlocks();const ctx={cat:catRes.cat,blocks};
-    const cacheKey=crypto.createHash('sha256').update(JSON.stringify({v:4,model,vCode:clean(q.body.vCode).toUpperCase(),sCode:res.sCode,category:catRes.code,product:p,images})).digest('hex');const cache=loadContentCache();
-    if(!q.body.force&&cache[cacheKey])return s.json({...cache[cacheKey],_meta:{model,cache:true,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,qa:cache[cacheKey].qa||null}});
-  let text='';
-  if(hasOR&&(process.env.AI_PROVIDER!=='openai')){
+    const durRaw=String(q.body.duration||'30s');const dur=['15s','30s','45s'].includes(durRaw)?durRaw:'30s';
+    const blocks=loadPromptBlocks();const ctx={cat:catRes.cat,blocks,duration:dur};
+    const cacheKey=crypto.createHash('sha256').update(JSON.stringify({v:5,model,vCode:clean(q.body.vCode).toUpperCase(),sCode:res.sCode,category:catRes.code,duration:dur,product:p,images})).digest('hex');const cache=loadContentCache();
+    if(!q.body.force&&cache[cacheKey])return s.json({...cache[cacheKey],_meta:{model,cache:true,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,duration:dur,jobId,qa:cache[cacheKey].qa||null}});
+   if(jobId){try{logAction(jobId,'GENERATE_STARTED',{v:jobV,s:res.sCode,category:catRes.code});if(clean(q.body.vCode))logAction(jobId,'S_AUTO_MAPPED',{v:jobV,s:res.sCode,reason:res.reason});touchJob(jobId,{status:'IN_PROGRESS',current_stage:'AI_GENERATING'});}catch(err){}}
+   let text='';let promptText='';
+   if(hasOR&&(process.env.AI_PROVIDER!=='openai')){
    const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});
-    const content=[{type:'text',text:buildPromptV2(p,t,ctx)}];
+    promptText=buildPromptV2(p,t,ctx);
+    const content=[{type:'text',text:promptText}];
     for(const u of images)content.push({type:'image_url',image_url:{url:u}});
     const cleanJsonText=t=>{let x=String(t||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();if(x&&!x.startsWith('{')&&x.includes('{')){const a=x.indexOf('{');const b=x.lastIndexOf('}');if(b>a)x=x.slice(a,b+1);}return x.trim();};
     const msgToText=m=>{let c=typeof m.content==='string'?m.content.trim():'';if(!c&&m.reasoning)c=String(m.reasoning).trim();if(Array.isArray(m.content))c=m.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim();return cleanJsonText(c);};
@@ -188,16 +202,52 @@ app.post('/api/generate',async(q,s)=>{
      try{JSON.parse(text);break;}catch{ if(attempt===2)break; }
     }
    }else{
-    const ai=new OpenAI({apiKey:process.env.OPENAI_API_KEY});const r=await ai.responses.create({model,input:buildPromptV2(p,t,ctx)});text=(r.output_text||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');
+    const ai=new OpenAI({apiKey:process.env.OPENAI_API_KEY});const r=await ai.responses.create({model,input:promptText});text=(r.output_text||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');
    }
    try{
-    const out=JSON.parse(text);out.qa=qaContentPack(out,p);out._meta={model,cache:false,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,qa:out.qa};
+    const out=JSON.parse(text);out.qa=qaContentPack(out,p);out._meta={model,cache:false,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,duration:dur,jobId,qa:out.qa};
+     if(jobId){try{const ver=createVersion(jobId,{input:{product:p,v:jobV,s:res.sCode,category:catRes.code},prompt:promptText,output:out,model,status:'GENERATED'});out._meta.version=ver.version_number;touchJob(jobId,{status:'GENERATED',current_stage:'CONTENT_GENERATED',s_code:res.sCode});logAction(jobId,'GENERATE_COMPLETED',{version:ver.version_number,model});}catch(err){console.error('track version failed:',err?.message||err);}}
    cache[cacheKey]=out;saveContentCache(cache);s.json(out);
-  }catch{s.status(502).json({error:'AI ตอบกลับไม่ใช่ JSON ที่ใช้งานได้ — กดเจนใหม่ได้โดยไม่ต้องเปลี่ยนข้อมูลสินค้า',raw:text.slice(0,6000),model});}
- }catch(e){
-  const status=e?.status===401?502:e?.status===429?503:500;let message=e?.message||'เกิดข้อผิดพลาดในการสร้าง Content Pack';if(e?.status===429)message='API 429: โมเดลฟรีกำลังเต็ม/ถูก rate limit — ลองใช้ผลที่ cache ก่อน หรือรอสักครู่';if(e?.status===402)message='OpenRouter 402: เครดิตหมด/โมเดลไม่ฟรี';s.status(status).json({error:message,code:e?.code||null,status:e?.status||null});
+  }catch{if(jobId){try{createVersion(jobId,{input:{product:p,v:jobV},prompt:typeof promptText!=='undefined'?promptText:'',model:typeof model!=='undefined'?model:'',status:'FAILED',error:String(text||'').slice(0,500)});touchJob(jobId,{status:'ERROR',current_stage:'AI_GENERATING'});logAction(jobId,'GENERATE_FAILED',{error:String(text||'').slice(0,300)});}catch(err){}}s.status(502).json({error:'AI ตอบกลับไม่ใช่ JSON ที่ใช้งานได้ — กดเจนใหม่ได้โดยไม่ต้องเปลี่ยนข้อมูลสินค้า',raw:text.slice(0,6000),model,jobId});}
+  }catch(e){
+   if(jobId){try{logAction(jobId,'GENERATE_FAILED',{error:String(e?.message||e).slice(0,300)});touchJob(jobId,{status:'ERROR',current_stage:'AI_GENERATING'});}catch(err){}}
+   const status=e?.status===401?502:e?.status===429?503:500;let message=e?.message||'เกิดข้อผิดพลาดในการสร้าง Content Pack';if(e?.status===429)message='API 429: โมเดลฟรีกำลังเต็ม/ถูก rate limit — ลองใช้ผลที่ cache ก่อน หรือรอสักครู่';if(e?.status===402)message='OpenRouter 402: เครดิตหมด/โมเดลไม่ฟรี';s.status(status).json({error:message,code:e?.code||null,status:e?.status||null,jobId});
  }
 });
+// ---------- PRODUCTION MEMORY / TRACKING API ----------
+app.post('/api/track/select',(q,s)=>{try{
+ const code=clean(q.body.productCode),v=clean(q.body.vCode).toUpperCase(),by=clean(q.body.by)||'web';
+ if(!code)return s.status(400).json({error:'productCode required'});
+ if(v){const {job}=getOrCreateJob(code,v,{categoryCode:clean(q.body.categoryCode),sCode:clean(q.body.sCode)});logAction(job.id,'V_SELECTED',{v,s:clean(q.body.sCode),category:clean(q.body.categoryCode)},by);touchJob(job.id,{status:'IN_PROGRESS',current_stage:'PRODUCT_SELECTED'});return s.json({ok:true,jobId:job.id});}
+ logAction(null,'PRODUCT_SELECTED',{code},by);return s.json({ok:true});
+}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/jobs/status',(q,s)=>{try{const codes=Array.isArray(q.body.codes)?q.body.codes.map(clean).filter(Boolean).slice(0,1200):[];s.json(codesStatus(codes));}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/job',(q,s)=>{try{
+ const ps=productStatusSummary(clean(q.query.code));if(!ps.exists)return s.json(ps);
+ const out={...ps};
+ if(clean(q.query.v)){const job=ps.jobs.find(j=>j.v_code===clean(q.query.v).toUpperCase());if(job){const full=initDb().prepare('SELECT * FROM production_jobs WHERE product_id=(SELECT id FROM products WHERE product_code=?) AND v_code=?').get(ps.code,job.v_code);out.versions=getVersions(full.id);out.actions=getActions(full.id,20);out.jobId=full.id;}}
+ s.json(out);
+}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/versions',(q,s)=>{try{s.json(getVersions(Number(q.query.job)||0));}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/version',(q,s)=>{try{const r=getVersionOutput(Number(q.query.job)||0,Number(q.query.v)||0);if(!r)return s.status(404).json({error:'not found'});s.json({version:r.version_number,status:r.generation_status,model:r.model,output:r.output_json?JSON.parse(r.output_json):null,error:r.error,created_at:r.created_at});}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/qc',(q,s)=>{try{const job=setQC(Number(q.body.jobId)||0,!!q.body.passed,clean(q.body.note),clean(q.body.by)||'web');s.json({ok:true,job});}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/publish',(q,s)=>{try{const row=setPublish(Number(q.body.jobId)||0,clean(q.body.platform),clean(q.body.status),clean(q.body.by)||'web');s.json({ok:true,publish:row});}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/publish',(q,s)=>{try{s.json(getPublish(Number(q.query.job)||0));}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/dashboard',(q,s)=>{try{s.json(getDashboard());}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/next',(q,s)=>{try{s.json(getNextJobs(Math.max(1,Math.min(20,Number(q.query.limit)||5))));}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/campaigns',(q,s)=>{try{if(!clean(q.body.name))return s.status(400).json({error:'name required'});s.json({ok:true,campaign:createCampaign(clean(q.body.name),q.body)});}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/campaigns/items',(q,s)=>{try{s.json({ok:true,added:addCampaignItems(Number(q.body.campaignId)||0,Array.isArray(q.body.codes)?q.body.codes:[])});}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/campaigns/:id',(q,s)=>{try{const p=campaignProgress(Number(q.params.id)||0);if(!p)return s.status(404).json({error:'not found'});s.json(p);}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/memory',(q,s)=>{try{s.json(getMemory(clean(q.query.type)||'project',clean(q.query.scope)||'project'));}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/memory',(q,s)=>{try{if(!clean(q.body.key))return s.status(400).json({error:'key required'});setMemory(clean(q.body.type)||'project',clean(q.body.key),q.body.value??'',clean(q.body.scope)||'project');s.json({ok:true});}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/assistant',(q,s)=>{try{s.json(askAssistant(q.body.question||''));}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/memory/import',async(q,s)=>{try{
+ const{spawn}=await import('node:child_process');
+ const child=spawn(process.execPath,[path.join(ROOT,'import-memory.mjs')],{cwd:ROOT,windowsHide:true,env:{...process.env}});
+ let out='',err='';child.stdout.on('data',d=>{out+=d.toString()});child.stderr.on('data',d=>{err+=d.toString()});
+ await new Promise((resolve,reject)=>{child.on('close',code=>code===0?resolve():reject(new Error(err||out||('import exit '+code))));child.on('error',reject)});
+ s.json({ok:true,log:out.trim()});
+}catch(e){s.status(500).json({ok:false,error:e.message});}});
 if(!process.env.VERCEL)app.listen(PORT,()=>console.log(`WDI Content Generator: http://localhost:${PORT}`));
 export default app;
 
