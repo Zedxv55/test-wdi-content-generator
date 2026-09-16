@@ -205,6 +205,23 @@ function verifiedLines(sheet){
   return out;
  }catch{return [];}
 }
+const SHEET_SLOTS=`You are a product-identity observer for DIAMOND/WDI. Look at the attached WDI reference images carefully. Output JSON ONLY (no markdown fences, no explanations) with EXACTLY these keys:
+{"product_title":"short product type for the sheet heading, e.g. Automotive Interior Dome Lamp","product_type_line":"one line like: A round automotive interior dome lamp / cabin light with:","parts":["5-10 bullets, each ONE observed part with position+appearance, e.g. Small rectangular ON/OFF push switch mounted at the top center"],"shape_lock":["5-9 bullets describing the silhouette and proportions that must stay identical"],"dimensions":{"present":true/false,"items":["only if printed in a supplied technical drawing, e.g. Front diameter: 100 mm"]},"views":[{"name":"FRONT VIEW","desc":"what this view shows and which reference it comes from (3-6 views max, only views a reference supports)"}],"allowed_labels":["at most 4 short factual labels, e.g. ON/OFF SWITCH"],"fidelity":["6-9 bullets of what must stay identical"]}
+RULES: describe ONLY what you see (silhouette, parts, positions, colors, materials, textures). Classify images yourself (photo/detail/technical drawing/dimension/other); a drawing is NOT a camera angle. Dimensions ONLY from a visible drawing, quoted exactly, else present=false and no dimension items. Never invent specs, fitment, voltage, materials grade, part numbers, brands. Never copy banner/ad text or Thai script as labels.`;
+function assembleSheetPrompt(d, verifiedLine){
+ const L=[];
+ L.push(d.product_title||'Product Reference Sheet');
+ L.push('\nPRODUCT IDENTITY LOCK — ABSOLUTE:\nUse the attached product images and technical drawing as the ONLY source of truth.\nDo not redesign, improve, modernize, simplify, stylize, or invent any part of the product.');
+ L.push(`\nPRODUCT:\n${d.product_type_line||'The exact product shown in the references with:'}\n`+(d.parts||[]).map(x=>`- ${x}`).join('\n'));
+ L.push(`\nCRITICAL SHAPE LOCK:\nThe overall product silhouette must remain identical to the reference:\n`+(d.shape_lock||[]).map(x=>`- ${x}`).join('\n'));
+ const dims=(d.dimensions&&d.dimensions.present&&(d.dimensions.items||[]).length)?d.dimensions.items:[];
+ if(dims.length)L.push(`\nDIMENSION LOCK:\nThe technical drawing indicates approximately:\n`+dims.map(x=>`- ${x}`).join('\n')+`\nShow these dimensions clearly and proportionally.`);
+ L.push(`\nPRODUCT SHEET LAYOUT:\nCreate a professional industrial product reference sheet on a clean white background.\n\nInclude exactly these views:\n`+(d.views||[]).map((v,i)=>`${i+1}. ${v.name} — ${v.desc}`).join('\n')+`\n\nThe main product must be large and easy to inspect.\nUse consistent scale and alignment between views.`);
+ L.push(`\nVISUAL STYLE:\nClean automotive OEM product documentation.\nTechnical catalog / engineering reference sheet.\nNeutral white background.\nSoft neutral studio lighting.\nHigh product clarity.\nAccurate material and surface texture.\nMinimal shadows.\nNo dramatic cinematic lighting.\nNo unnecessary graphic decoration.`);
+ L.push(`\nTEXT RULE:\nOnly use factual labels:\n`+((d.allowed_labels||[]).slice(0,4).map(x=>`"${x}"`).join('\n')||'(no text)')+`\n\nDo not invent product specifications, fitment, voltage, wattage, material grade, certifications, part numbers, logos, or brand names.`);
+ L.push(`\nPRODUCT FIDELITY:\nThe final sheet must function as a visual identity reference for AI generation.\nAny future image or video generated from this sheet must preserve:\n`+(d.fidelity||[]).map(x=>`- ${x}`).join('\n')+`\n\nDo not add, remove, merge, or reinterpret product components.\nDo not generate an alternative version of the product.\n\nIMPORTANT:\nThis is a PRODUCT REFERENCE / IDENTITY SHEET, not an advertisement.\nPrioritize visual accuracy over aesthetics.`);
+ return L.join('\n');
+}
 function cleanSheetPrompt(t){
  let x=String(t||'').replace(/<unk>/gi,'').replace(/<[^>\n]{0,40}>/g,'').replace(/([^\n])\1{12,}/g,'$1').trim();
  const m=x.search(/PRODUCT IDENTITY LOCK/i);
@@ -223,7 +240,7 @@ app.post('/api/sheet-prompt',async(q,s)=>{try{
 ${JSON.stringify({code:p['Product Code'],name_th:p['Product Name (TH)'],name_en:p['Product Name (EN)'],category:p.Category,sub:p['Sub Category'],description_th:p['Description (TH)'],description_en:p['Description (EN)'],fitment:[p['Fitment Brands'],p['Fitment Models'],p['Fitment Contexts']].filter(Boolean).join(' | ')},null,2)}
 SHEET VERIFIED COMPONENTS: ${verified.length?verified.join(' | '):'(none — rely on visual observation only)'}
 CATEGORY: ${catRes.code}. ATTACHED IMAGES: ${images.length}.`;
- const instruction=`You are a product-identity prompt engineer for DIAMOND/WDI. Look at the attached WDI reference images carefully. Your ONLY output is ONE image-generation prompt (plain English text, no JSON, no explanations) that creates a PRODUCT REFERENCE / IDENTITY SHEET for the exact product shown. Your response MUST start with the exact header line PRODUCT IDENTITY LOCK. Keep the entire prompt under 3500 characters. No preamble, no reasoning trace.
+ const instruction=`You are a product-identity prompt engineer for DIAMOND/WDI. Look at the attached WDI reference images carefully. Your ONLY output is a JSON object (no markdown fences, no explanations) that fills the golden product-sheet pattern. Observe the images using the doctrine below, then encode observations into this EXACT JSON shape: {"product_title":string,"product_type_line":string,"parts":[5-10 strings],"shape_lock":[5-9 strings],"dimensions":{"present":bool,"items":[strings]},"views":[{"name":string,"desc":string}],"allowed_labels":[max 4 strings],"fidelity":[6-9 strings]}. The server assembles the final golden-pattern prompt from your JSON — values are pasted verbatim, so write finished prompt-ready English.
 
 Follow this doctrine (from the company identity-lock blueprint):
 - The reference images are the ONLY source of truth. Never redesign, improve, modernize, simplify, stylize or invent any part.
@@ -246,11 +263,16 @@ ${brief}`;
   const msg=r.choices?.[0]?.message||{};
   text=typeof msg.content==='string'?msg.content.trim():(Array.isArray(msg.content)?msg.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim():String(msg.reasoning||'').trim());
   text=text.replace(/^```(?:\w+)?\s*/,'').replace(/\s*```$/,'').trim();
-  text=cleanSheetPrompt(text);
-  if(text.length>=800&&text.length<=6000)break;
+  try{
+   let jt=text;if(!jt.trim().startsWith('{')&&jt.includes('{')){const a=jt.indexOf('{');const b=jt.lastIndexOf('}');if(b>a)jt=jt.slice(a,b+1);}
+   const dd=JSON.parse(jt);
+   if(!dd||!Array.isArray(dd.parts)||!dd.parts.length||!Array.isArray(dd.fidelity)||!dd.fidelity.length)throw new Error('bad slots');
+   text=assembleSheetPrompt(dd);
+  }catch{ text=''; }
+  if(text.length>=800)break;
  }
- if(text.length>6000){const cut=text.slice(0,6000);const p=Math.max(cut.lastIndexOf('.'),cut.lastIndexOf('\n'));text=(p>3000?cut.slice(0,p+1):cut).trim();}
- if(text.length<800)return s.status(502).json({error:'AI ตอบสั้นเกินไป — ลองกดใหม่อีกครั้ง',model});
+ if(text.length>6000)text=text.slice(0,6000);
+ if(text.length<800){console.error(`[sheet-prompt] rejected len=${text.length} model=${model} raw=${String(text||'').slice(0,300)}`);return s.status(502).json({error:'AI ตอบสั้นเกินไป — ลองกดใหม่อีกครั้ง',model});}
  if(sheet){try{setSheetVisual(sheet.id,text);}catch{}}
  s.json({ok:true,prompt:text,model,imageCount:images.length,sheet:sheet?{id:sheet.id,version:sheet.version_number,status:sheet.status}:null,saved:!!sheet});
 }catch(e){const status=e?.status===401?502:e?.status===429?503:500;s.status(status).json({error:e?.message||'สร้าง prompt ไม่สำเร็จ',code:e?.code||null,status:e?.status||null});}});
