@@ -67,6 +67,60 @@ header{height:56px!important;padding:0 20px!important}
 .schip.on{background:#20293a;border-color:var(--st-accent);color:#fff;font-weight:700}
 .item .vprog{display:block;font-size:11px;color:var(--st-muted);margin-top:4px}
 .item .vprog b{color:var(--st-accent)}
+/* ===== E2 restructure: 2-col + drawers, no permanent right rail ===== */
+.workspace-main{grid-template-columns:300px minmax(0,1fr)!important}
+.products-panel{grid-column:1}.editor{grid-column:2}
+#navToggle{display:none}
+.navsearch{display:flex;gap:6px;padding:10px 10px 0}
+.navsearch input{flex:1;min-height:40px;padding:9px 12px;border:1px solid #303744;border-radius:10px;background:#121720;color:#fff;min-width:0}
+.navsearch button{min-height:40px}
+.toolbar{grid-template-columns:150px 130px 130px auto!important}
+#creativeScrim,#navScrim{position:fixed;inset:0;background:#04060acc;z-index:96;display:none}
+#creativeScrim.on,#navScrim.on{display:block}
+#creativeDrawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,94vw);z-index:97;background:#0e141d;border-left:1px solid #2b3441;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .22s ease}
+#creativeDrawer.open{transform:none}
+.drawer-search{padding:10px 12px;border-bottom:1px solid #232b36}
+.drawer-search input{width:100%;min-height:40px;padding:9px 12px;border:1px solid #303744;border-radius:10px;background:#121720;color:#fff}
+#creativeDrawer .vgrid{overflow:auto;flex:1}
+#creativeDrawer #durSeg{border-top:1px solid #232b36}
+.selv{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#0d1320;border:1px solid #2b3441;border-radius:12px;padding:11px 13px}
+.selv b{font-size:15px}
+.selv small{color:var(--st-muted)}
+.selv button{margin-left:auto}
+#prodDetails{margin-top:10px;border:1px solid #2b3441;border-radius:12px;background:#0d1320}
+#prodDetails>summary{cursor:pointer;padding:9px 12px;font-size:12px;color:var(--st-muted);list-style:none}
+#prodDetails>summary::-webkit-details-marker{display:none}
+#pdBody{padding:0 12px 10px;font-size:12.5px;line-height:1.7}
+#truthModal{position:fixed;inset:0;z-index:98;display:none;place-items:center;background:#04060acc;padding:18px}
+#truthModal.on{display:grid}
+.truth-card{width:min(640px,94vw);max-height:84vh;overflow:auto;background:#10161f;border:1px solid #344151;border-radius:16px;padding:16px 18px}
+.truth-card table{width:100%;border-collapse:collapse;font-size:13px}
+.truth-card td{padding:7px 8px;border-bottom:1px solid #232b36;vertical-align:top}
+.truth-card td:first-child{color:var(--st-muted);white-space:nowrap;width:130px}
+@media(max-width:900px){
+.workspace-main{grid-template-columns:1fr!important}
+.products-panel{position:fixed!important;top:0;left:0;bottom:0;width:min(330px,88vw);z-index:97;border-radius:0!important;transform:translateX(-105%);transition:transform .22s ease;max-height:none!important}
+body.nav-open .products-panel{transform:none}
+body.nav-open #navScrim{display:block}
+#navToggle{display:inline-block}
+.editor{grid-column:1!important}
+.toolbar{display:flex!important;flex-wrap:wrap}
+.toolbar>*{flex:1 1 140px}
+}
+/* Phase E: declutter — kill duplicates, tighten */
+#selSeries{display:none}
+#statusFilter{display:none}
+.toolbar{grid-template-columns:minmax(280px,1fr) 150px 130px 130px auto!important}
+.vcard small{display:none}
+.vcard.on small{display:block}
+.vcard{padding:8px 12px}
+.vcard b{font-size:12.5px}
+.wfwrap{margin:10px 0;border:1px solid #2b3441;border-radius:12px;background:#0d1320}
+.wfwrap>summary{cursor:pointer;padding:9px 12px;font-size:12px;color:var(--st-muted);list-style:none}
+.wfwrap>summary::-webkit-details-marker{display:none}
+.wfwrap .workflow-card{margin:0 10px 10px}
+#vmatrix{font-size:12px}
+.step{margin:0 0 12px;padding:12px 14px}
 /* Phase D: thumbs + collapsible facts + staged progress */
 .thumbs{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;grid-column:1}
 .thumbs img{width:66px;height:66px;object-fit:cover;border-radius:9px;cursor:pointer;border:1px solid #2b3441;background:#fff}
