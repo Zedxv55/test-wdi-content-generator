@@ -67,6 +67,10 @@ header{height:56px!important;padding:0 20px!important}
 .schip.on{background:#20293a;border-color:var(--st-accent);color:#fff;font-weight:700}
 .item .vprog{display:block;font-size:11px;color:var(--st-muted);margin-top:4px}
 .item .vprog b{color:var(--st-accent)}
+/* Brand logo (real DIAMOND logo image) */
+.brand{display:flex!important;align-items:center;gap:10px;min-width:0}
+.brand-logo{display:block!important;height:38px;width:auto;border-radius:8px;flex:none}
+@media(max-width:760px){.brand-logo{height:30px}}
 /* ===== E2 restructure: 2-col + drawers, no permanent right rail ===== */
 .workspace-main{grid-template-columns:300px minmax(0,1fr)!important}
 .products-panel{grid-column:1}.editor{grid-column:2}
@@ -107,6 +111,39 @@ body.nav-open #navScrim{display:block}
 .toolbar{display:flex!important;flex-wrap:wrap}
 .toolbar>*{flex:1 1 140px}
 }
+/* ===== E3 REAL REDESIGN: studio workbench, not dashboard ===== */
+.steps-mini{display:flex;gap:8px;align-items:center;margin:2px 0 14px;font-size:12px}
+.steps-mini .sm{color:var(--st-muted);font-weight:700;letter-spacing:.3px}
+.steps-mini .sm.on{color:var(--st-accent)}
+.steps-mini .sm+.sm::before{content:"→";margin-right:8px;color:#3a4452}
+.ph-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.ph-head .eyebrow{font-size:11px;color:var(--st-muted);letter-spacing:.6px}
+.ph-head h1{font-size:23px!important;margin:2px 0 0;line-height:1.3}
+.ph-actions{display:flex;gap:7px;flex:none}
+.hero-grid{display:grid;grid-template-columns:minmax(280px,460px) minmax(0,1fr);gap:20px;align-items:start}
+.hero-media{max-width:520px}
+.hero-media .product-img{width:100%;height:320px;min-height:0!important;max-height:340px!important;object-fit:contain;background:#fff;border-radius:14px}
+.hero-media .thumbs{grid-column:auto}
+.hero-media .thumbs img{width:56px;height:56px}
+.hero-info{min-width:0}
+.hero-info .code-big{font-size:15px;font-weight:800;color:var(--st-accent)}
+.hero-info .pills{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.keyfacts{list-style:none;margin:10px 0;padding:0;font-size:13px;line-height:2}
+.keyfacts li{border-bottom:1px dashed #222b36;padding:2px 0}
+.inforow{margin:10px 0}
+.hero-info .facts{margin-top:10px;font-size:12.5px}
+.creative-bar{margin-top:16px;padding-top:14px;border-top:1px solid #222b36}
+.action-zone{margin-top:16px;padding-top:14px;border-top:1px solid #222b36}
+.action-zone .secondary-row{display:flex;gap:8px;margin-top:8px}
+.action-zone .secondary-row button{flex:1}
+.action-zone .tertiary-row{display:flex;gap:8px;margin-top:8px}
+.action-zone .tertiary-row button{flex:1;font-size:12px;opacity:.85}
+/* borderless steps: dividers, not cards */
+.editor .step{background:transparent!important;border:0!important;border-radius:0!important;padding:14px 2px!important}
+.editor .step+.step{border-top:1px solid #222b36!important}
+.step-head{margin-bottom:6px}
+/* tighter list */
+#products .item{padding:10px 12px}
 /* Phase E: declutter — kill duplicates, tighten */
 #selSeries{display:none}
 #statusFilter{display:none}
@@ -218,7 +255,11 @@ button:disabled{opacity:.55;cursor:wait}
   #btnNext{flex:1}
 }
 @media(max-width:760px){
-  .workspace-main{grid-template-columns:1fr!important}
+.hero-grid{grid-template-columns:1fr!important}
+.hero-media{max-width:none}
+.hero-media .product-img{height:260px!important}
+.ph-head h1{font-size:19px!important}
+.workspace-main{grid-template-columns:1fr!important}
   .products-panel,.editor,.templates{grid-column:1!important;min-height:auto!important;max-height:none!important}
   .toolbar{display:flex!important;flex-direction:column}
   header{flex-wrap:wrap;height:auto!important;padding:10px 14px!important;row-gap:8px}
