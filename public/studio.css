@@ -144,6 +144,13 @@ body.nav-open #navScrim{display:block}
 .step-head{margin-bottom:6px}
 /* tighter list */
 #products .item{padding:10px 12px}
+/* Dist Studio: platform tabs + previews + editor */
+.dist-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.dist-plat-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.dist-qa{margin:10px 0}
+.dist-fields{display:grid;gap:10px}
+.dist-side{display:grid;gap:10px}
+@media(min-width:1100px){.dist-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}}
 /* Phase E: declutter — kill duplicates, tighten */
 #selSeries{display:none}
 #statusFilter{display:none}

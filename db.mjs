@@ -159,6 +159,22 @@ CREATE TABLE IF NOT EXISTS product_sheet_actions(
   created_at TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_sheets_product ON product_sheets(product_id);
+CREATE TABLE IF NOT EXISTS platform_content(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  job_id INTEGER DEFAULT NULL REFERENCES production_jobs(id),
+  platform TEXT NOT NULL,
+  content_angle TEXT DEFAULT 'A',
+  version INTEGER NOT NULL,
+  content_json TEXT DEFAULT '',
+  qa_json TEXT DEFAULT '',
+  score INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'DRAFT',
+  created_at TEXT DEFAULT '',
+  updated_at TEXT DEFAULT '',
+  is_current INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_pcontent_lookup ON platform_content(product_id,platform,content_angle);
 `;
 
 export function now() { return new Date().toISOString(); }
@@ -535,6 +551,34 @@ export function setSheetVisual(sheetId, promptText) {
   d.prepare('INSERT INTO product_sheet_actions (product_sheet_id,action_type,action_data,created_at) VALUES (?,?,?,?)')
     .run(sheetId, 'SHEET_PROMPT_SAVED', JSON.stringify({ chars: String(promptText || '').length }), now());
   return d.prepare('SELECT * FROM product_sheets WHERE id=?').get(sheetId);
+}
+
+// ---------- PLATFORM CONTENT (versioned per product+platform+angle) ----------
+export function saveContentVersion(productId, { jobId = null, platform, angle = 'A', content, qa, score = 0, status = 'DRAFT' }) {
+  const d = initDb();
+  const cur = d.prepare('SELECT COALESCE(MAX(version),0) AS m FROM platform_content WHERE product_id=? AND platform=? AND content_angle=?').get(productId, platform, angle).m;
+  const n = cur + 1;
+  d.prepare('UPDATE platform_content SET is_current=0 WHERE product_id=? AND platform=? AND content_angle=?').run(productId, platform, angle);
+  const ts = now();
+  const r = d.prepare(`INSERT INTO platform_content
+    (product_id,job_id,platform,content_angle,version,content_json,qa_json,score,status,created_at,updated_at,is_current)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,1)`).run(productId, jobId, platform, angle, n,
+    JSON.stringify(content || {}), JSON.stringify(qa || {}), score, status, ts, ts);
+  return { id: Number(r.lastInsertRowid), version: n };
+}
+
+export function getCurrentContent(productId, platform, angle = 'A') {
+  return initDb().prepare('SELECT * FROM platform_content WHERE product_id=? AND platform=? AND content_angle=? AND is_current=1').get(productId, platform, angle) || null;
+}
+
+export function getContentHistory(productId, platform, angle = 'A') {
+  return initDb().prepare('SELECT id,version,score,status,created_at,updated_at FROM platform_content WHERE product_id=? AND platform=? AND content_angle=? ORDER BY version').all(productId, platform, angle);
+}
+
+export function setContentStatus(id, status) {
+  const d = initDb();
+  d.prepare('UPDATE platform_content SET status=?, updated_at=? WHERE id=?').run(status, now(), id);
+  return d.prepare('SELECT * FROM platform_content WHERE id=?').get(id);
 }
 
 export function dbFile() { return memoryMode ? ':memory:' : DB_FILE; }

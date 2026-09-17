@@ -9,6 +9,9 @@ import crypto from 'node:crypto';
 import { initDb, memoryMode, dbFile, getProductRow, getOrCreateJob, logAction, touchJob, createVersion, getVersions, getVersionOutput, getActions, setPublish, getPublish, setQC, productStatusSummary, codesStatus, getDashboard, getNextJobs, createCampaign, addCampaignItems, campaignProgress, setMemory, getMemory, getCurrentSheet, getSheetVersions, setSheetStatus, logSheetAction, getSheetActions, setSheetVisual } from './db.mjs';
 import { askAssistant } from './assistant.mjs';
 import { ensureSheet, sheetSummary, sheetPromptBlock } from './sheets.mjs';
+import { ANGLES, PLATFORMS, loadBusinessConfig, contactBlock, buildFacts, buildHashtags, buildKeywords, buildDistPrompt, qaContent, scoreContent } from './content-dist.mjs';
+import { saveContentVersion, getCurrentContent, getContentHistory, setContentStatus } from './db.mjs';
+import { planDurations, buildStoryboard, loadCapabilities, loadStoryboardRows } from './flow.mjs';
 
 dotenv.config();
 initDb();
@@ -90,6 +93,7 @@ app.get('/api/series-v',(q,s)=>s.json(loadSeriesV()));
 app.get('/api/categories',(q,s)=>s.json(loadCategories()));
 app.get('/api/platforms',(q,s)=>s.json(loadPlatformSpecs()));
 app.get('/api/prompt-blocks',(q,s)=>s.json(loadPromptBlocks()));
+app.get('/api/flow-models',(q,s)=>{try{s.json(loadCapabilities());}catch(e){s.status(500).json({error:e.message});}});
 app.get('/api/category-suggest',(q,s)=>{const p={Category:q.query.category||'', 'Sub Category':q.query.sub||'', 'Product Name (TH)':q.query.th||'', 'Product Name (EN)':q.query.en||''};const r=resolveCategory(q.query.code||'',p);s.json({code:r.code,name:r.cat.name,auto:r.auto});});
 app.get('/api/resolve-series',(q,s)=>{const p={Category:q.query.category||'', 'Sub Category':q.query.sub||'', 'Product Name (TH)':q.query.th||'', 'Product Name (EN)':q.query.en||''};const c=resolveCategory(q.query.cat||'',p);const r=resolveSeries(q.query.v||'',c.code);s.json({vCode:clean(q.query.v).toUpperCase(),category:c.code,categoryName:c.cat.name,categoryAuto:c.auto,sCode:r.sCode,sName:clean(r.row['ซีรีส์/Ai']),sRisk:clean(r.row['ระดับความเสี่ยง']),sUseWhen:clean(r.row['ใช้เมื่อ / เลือกซีรีส์นี้เมื่อ']),reason:r.reason});});
 app.get('/api/sheet',(q,s)=>{try{
@@ -304,14 +308,18 @@ app.post('/api/generate',async(q,s)=>{
     const blocks=loadPromptBlocks();
     const visualBlock=(sheet&&sheet.visual_prompt)?`\n\nAPPROVED VISUAL IDENTITY (Product Sheet #${sheet.id} v${sheet.version_number} — SAME direction as the reference sheet, overrides any conflicting creative text):\n${String(sheet.visual_prompt).slice(0,2500)}\n\nHARD RULES FOR EVERY SCENE (flow_prompt, visual, script):\n- Describe ONLY parts, colors, materials and views present in the identity above or the attached reference images.\n- NEVER invent colors, parts (screws, sockets, wires, vents, bulbs, mounts) or views (back/rear/side/top/bottom) beyond the references.\n- Every scene MUST state which supplied reference image it uses. If a view has no reference, cut cleanly to a verified view instead of inventing one.\n- V/S creative direction must not rewrite this identity. On conflict, this identity wins.`:'';
     const ctx={cat:catRes.cat,blocks,duration:dur,sheetBlock:sheet?sheetPromptBlock(sheet,mode):'',sheetMeta,visualBlock};
-    const cacheKey=crypto.createHash('sha256').update(JSON.stringify({v:6,model,vCode:clean(q.body.vCode).toUpperCase(),sCode:res.sCode,category:catRes.code,duration:dur,mode,sheetV:sheetMeta?sheetMeta.version:0,product:p,images})).digest('hex');const cache=loadContentCache();
-    if(!q.body.force&&cache[cacheKey])return s.json({...cache[cacheKey],_meta:{model,cache:true,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,duration:dur,mode,jobId,sheet:sheetMeta,sheetWarn,qa:cache[cacheKey].qa||null}});
+    const caps=loadCapabilities();const flowModel=caps.models[q.body.flowModel]?q.body.flowModel:caps.defaultModel;
+    const plan=planDurations(parseInt(dur),flowModel);
+    const sbPlan=buildStoryboard({plan,templateRow:t,sheetRow:(loadStoryboardRows()[res.sCode]||null),sheetRefs:(sheet&&sheet.references||[]).map(r=>({view:r.view_type,url:r.image_url})),productCode:clean(p['Product Code'])});
+    const cacheKey=crypto.createHash('sha256').update(JSON.stringify({v:7,model,vCode:clean(q.body.vCode).toUpperCase(),sCode:res.sCode,category:catRes.code,duration:dur,mode,flowModel,sheetV:sheetMeta?sheetMeta.version:0,product:p,images})).digest('hex');const cache=loadContentCache();
+    if(!q.body.force&&cache[cacheKey])return s.json({...cache[cacheKey],_meta:{model,cache:true,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,duration:dur,mode,flowModel,jobId,sheet:sheetMeta,sheetWarn,qa:cache[cacheKey].qa||null}});
    if(jobId){try{logAction(jobId,'GENERATE_STARTED',{v:jobV,s:res.sCode,category:catRes.code});if(clean(q.body.vCode))logAction(jobId,'S_AUTO_MAPPED',{v:jobV,s:res.sCode,reason:res.reason});touchJob(jobId,{status:'IN_PROGRESS',current_stage:'AI_GENERATING'});}catch(err){}}
    let text='';let promptText='';
    if(hasOR&&(process.env.AI_PROVIDER!=='openai')){
    const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});
     promptText=buildPromptV2(p,t,ctx);
     const content=[{type:'text',text:promptText}];
+    content[0].text+=`\n\nSTORYBOARD PLAN (generation units for Google Flow): return EXACTLY ${plan.segments.length} scenes, one per generation, with these durations in seconds: [${plan.segments.join(', ')}] (${plan.modelLabel}). Scene purposes in order: ${(sbPlan.scenes.map(s=>s.id+'='+s.purpose.slice(0,80)).join(' | '))}. Keep the OUTPUT JSON scenes array in the same order with a matching flow_prompt per scene.`;
     for(const u of images)content.push({type:'image_url',image_url:{url:u}});
     const cleanJsonText=t=>{let x=String(t||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();if(x&&!x.startsWith('{')&&x.includes('{')){const a=x.indexOf('{');const b=x.lastIndexOf('}');if(b>a)x=x.slice(a,b+1);}return x.trim();};
     const msgToText=m=>{let c=typeof m.content==='string'?m.content.trim():'';if(!c&&m.reasoning)c=String(m.reasoning).trim();if(Array.isArray(m.content))c=m.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim();return cleanJsonText(c);};
@@ -324,9 +332,13 @@ app.post('/api/generate',async(q,s)=>{
     const ai=new OpenAI({apiKey:process.env.OPENAI_API_KEY});const r=await ai.responses.create({model,input:promptText});text=(r.output_text||'').trim().replace(/^```json\s*/i,'').replace(/\s*```$/i,'');
    }
    try{
-    const out=JSON.parse(text);out.qa=qaContentPack(out,p);out._meta={model,cache:false,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,duration:dur,mode,jobId,sheet:sheetMeta,sheetWarn,qa:out.qa};
+    const out=JSON.parse(text);out.qa=qaContentPack(out,p);out._meta={model,cache:false,imageCount:images.length,vCode:clean(q.body.vCode).toUpperCase(),mappedS:res.sCode,mapReason:res.reason,category:catRes.code,categoryAuto:catRes.auto,duration:dur,mode,flowModel,jobId,sheet:sheetMeta,sheetWarn,plan:{model:plan.model,generations:plan.generations,segments:plan.segments},qa:out.qa};
      if(jobId){try{const ver=createVersion(jobId,{input:{product:p,v:jobV,s:res.sCode,category:catRes.code,sheet:sheetMeta,mode},prompt:promptText,output:out,model,status:'GENERATED'});out._meta.version=ver.version_number;touchJob(jobId,{status:'GENERATED',current_stage:'CONTENT_GENERATED',s_code:res.sCode});logAction(jobId,'GENERATE_COMPLETED',{version:ver.version_number,model});}catch(err){console.error('track version failed:',err?.message||err);}}
-   cache[cacheKey]=out;saveContentCache(cache);s.json(out);
+    const aiScenes=Array.isArray(out.scenes)?out.scenes:[];
+    out.flow_prompts=aiScenes.map((sc,i)=>({scene_id:(sbPlan.scenes[i]||{}).id||('SC'+String(i+1).padStart(2,'0')),duration:((plan.segments[i]!==undefined?plan.segments[i]:plan.segments[plan.segments.length-1]||10))+'s',prompt:sc.flow_prompt||''}));
+    out.storyboard={total_duration:sbPlan.total_duration,requested:sbPlan.requested,remainder:sbPlan.remainder,model:sbPlan.model,modelLabel:sbPlan.modelLabel,generations:sbPlan.generations,scenes:sbPlan.scenes.map((ps,i)=>({...ps,visual:(aiScenes[i]||{}).visual||'',action:(aiScenes[i]||{}).flow_prompt||'',reference_status:(ps.reference||[]).includes('[REFERENCE_NOT_AVAILABLE]')?'NEEDS_REVIEW':'OK',ai_matched:!!aiScenes[i]}))};
+    if(aiScenes.length!==sbPlan.scenes.length)out.storyboard.note=`AI returned ${aiScenes.length} scenes vs plan ${sbPlan.scenes.length} — mapped in order, verify coverage`;
+    cache[cacheKey]=out;saveContentCache(cache);s.json(out);
   }catch{if(jobId){try{createVersion(jobId,{input:{product:p,v:jobV},prompt:typeof promptText!=='undefined'?promptText:'',model:typeof model!=='undefined'?model:'',status:'FAILED',error:String(text||'').slice(0,500)});touchJob(jobId,{status:'ERROR',current_stage:'AI_GENERATING'});logAction(jobId,'GENERATE_FAILED',{error:String(text||'').slice(0,300)});}catch(err){}}s.status(502).json({error:'AI ตอบกลับไม่ใช่ JSON ที่ใช้งานได้ — กดเจนใหม่ได้โดยไม่ต้องเปลี่ยนข้อมูลสินค้า',raw:text.slice(0,6000),model,jobId});}
   }catch(e){
    if(jobId){try{logAction(jobId,'GENERATE_FAILED',{error:String(e?.message||e).slice(0,300)});touchJob(jobId,{status:'ERROR',current_stage:'AI_GENERATING'});}catch(err){}}
@@ -359,7 +371,98 @@ app.post('/api/campaigns/items',(q,s)=>{try{s.json({ok:true,added:addCampaignIte
 app.get('/api/campaigns/:id',(q,s)=>{try{const p=campaignProgress(Number(q.params.id)||0);if(!p)return s.status(404).json({error:'not found'});s.json(p);}catch(e){s.status(500).json({error:e.message});}});
 app.get('/api/memory',(q,s)=>{try{s.json(getMemory(clean(q.query.type)||'project',clean(q.query.scope)||'project'));}catch(e){s.status(500).json({error:e.message});}});
 app.post('/api/memory',(q,s)=>{try{if(!clean(q.body.key))return s.status(400).json({error:'key required'});setMemory(clean(q.body.type)||'project',clean(q.body.key),q.body.value??'',clean(q.body.scope)||'project');s.json({ok:true});}catch(e){s.status(500).json({error:e.message});}});
+// ---------- CONTENT DISTRIBUTION STUDIO API (legacy /api/generate-marketplace kept intact) ----------
 app.post('/api/assistant',(q,s)=>{try{s.json(askAssistant(q.body.question||''));}catch(e){s.status(500).json({error:e.message});}});
+function distProductId(code) {
+  const d = initDb();
+  let row = d.prepare('SELECT * FROM products WHERE product_code=?').get(String(code || '').trim());
+  if (!row) {
+    const r = d.prepare('INSERT INTO products (product_code,synced_at) VALUES (?,?)').run(String(code || '').trim(), new Date().toISOString());
+    row = d.prepare('SELECT * FROM products WHERE id=?').get(r.lastInsertRowid);
+  }
+  return row;
+}
+function distCampaignCtx(productId) {
+  try {
+    const d = initDb();
+    const r = d.prepare(`SELECT c.campaign_name,ci.day_number,ci.set_number,ci.priority FROM campaign_items ci
+      JOIN campaigns c ON c.id=ci.campaign_id WHERE ci.product_id=? AND c.status='ACTIVE' ORDER BY ci.day_number LIMIT 1`).get(productId);
+    if (!r) return '';
+    return `Campaign ${r.campaign_name}, Day ${r.day_number||'-'}, Set #${r.set_number||'-'}, priority ${r.priority||0}`;
+  } catch { return ''; }
+}
+app.post('/api/content-distribution',async(q,s)=>{try{
+ const p=q.body.product;if(!p||!clean(p['Product Code']))return s.status(400).json({error:'product with Product Code required'});
+ const angle=(ANGLES[clean(q.body.angle).toUpperCase()]?clean(q.body.angle).toUpperCase():'A');
+ const plats=(Array.isArray(q.body.platforms)&&q.body.platforms.length?q.body.platforms:Object.keys(PLATFORMS)).filter(k=>PLATFORMS[k]);
+ if(!plats.length)return s.status(400).json({error:'no valid platforms'});
+ const hasOR=Boolean(process.env.OPENROUTER_API_KEY);if(!hasOR)return s.status(503).json({error:'ยังไม่ได้ตั้งค่า API Key ใน .env'});
+ const catRes=resolveCategory(q.body.categoryCode||'',p);
+ let sheet=null;try{sheet=ensureSheet(clean(p['Product Code']),catRes.code,p,catRes.cat).sheet;}catch(err){}
+ const sheetCtx=sheet?`Sheet #${sheet.id} v${sheet.version_number} [${sheet.status}]`: 'none';
+ const prodRow=distProductId(clean(p['Product Code']));
+ const facts=buildFacts(p,sheet?{verifiedFields:(sheetSummary(sheet)?.verified_fields||[])}:null);
+ const cfg=loadBusinessConfig();
+ const contact=contactBlock(cfg);
+ const prompt=buildDistPrompt({product:p,facts,sheetCtx,angle,campaignCtx:distCampaignCtx(prodRow.id),contact,platforms:plats});
+ const model=process.env.OPENROUTER_MODEL||'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
+ const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});
+ let out=null,lastErr='';
+ const msgs=[{role:'user',content:prompt}];
+ for(let attempt=0;attempt<3;attempt++){
+  try{
+   const r=await ai.chat.completions.create({model,messages:msgs,temperature:0.3,max_tokens:6000});
+   const msg=r.choices?.[0]?.message||{};
+   let t=typeof msg.content==='string'?msg.content.trim():(Array.isArray(msg.content)?msg.content.map(x=>typeof x==='string'?x:(x?.text||'')).join('').trim():'');
+   if(!t&&msg.reasoning)t=String(msg.reasoning).trim();
+   t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+   if(!t.startsWith('{')&&t.includes('{')){const a=t.indexOf('{');const b=t.lastIndexOf('}');if(b>a)t=t.slice(a,b+1);}
+   const d=JSON.parse(t);
+   if(!d||!d.platforms)throw new Error('bad shape');
+   out=d;break;
+  }catch(e){lastErr=e?.message||'parse failed';msgs.push({role:'user',content:'Return ONLY the JSON object now. No explanations, no reasoning text.'});}
+ }
+ if(!out)return s.status(502).json({error:'AI ตอบกลับใช้ไม่ได้ — ลองกดใหม่อีกครั้ง',detail:lastErr,model});
+ const hashtags={};const keywords=buildKeywords(p,facts.fitmentVerified);
+ for(const k of plats)hashtags[k]=buildHashtags(p,facts.fitmentVerified,k,cfg).all;
+ const plan={product:{code:clean(p['Product Code']),name:clean(p['Product Name (TH)'])||clean(p['Product Name (EN)']),category:clean(p.Category)},sheet:sheet?{id:sheet.id,version:sheet.version_number,status:sheet.status}:null,angle,facts,platforms:{},hashtags,keywords,contact,campaign:distCampaignCtx(prodRow.id),generated_at:new Date().toISOString()};
+ for(const k of plats)plan.platforms[k]=out.platforms[k]||{};
+ const qa=qaContent(plan,facts);
+ const score=scoreContent(plan,qa);
+ plan.qa=qa;plan.score=score;
+ const saved=[];
+ for(const k of plats){
+  const v=saveContentVersion(prodRow.id,{platform:k,angle,content:plan.platforms[k],qa,score:score.total,status:score.ready?'READY':'DRAFT'});
+  saved.push({platform:k,...v});
+ }
+ s.json({ok:true,plan,versions:saved,model});
+}catch(e){const status=e?.status===401?502:e?.status===429?503:500;s.status(status).json({error:e?.message||'สร้าง content ไม่สำเร็จ',status:e?.status||null});}});
+app.post('/api/content-qa',(q,s)=>{try{
+ const plan=q.body.plan;if(!plan||!plan.platforms)return s.status(400).json({error:'plan required'});
+ const p=(q.body.product||{});const facts=buildFacts(p,null);
+ const qa=qaContent(plan,facts);s.json({qa,score:scoreContent(plan,qa)});
+}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/content-rewrite',(q,s)=>{try{
+ const platform=clean(q.body.platform);if(!PLATFORMS[platform])return s.status(400).json({error:'unknown platform'});
+ const text=clean(q.body.text);if(!text)return s.status(400).json({error:'text required'});
+ const instruction=clean(q.body.instruction)||'ปรับให้อ่านง่าย';
+ const p=q.body.product||{};const facts=buildFacts(p,null);
+ const finish=(t)=>s.json({ok:true,text:t});
+ (async()=>{
+  const ai=new OpenAI({apiKey:process.env.OPENROUTER_API_KEY,baseURL:process.env.OPENROUTER_BASE_URL||'https://openrouter.ai/api/v1',defaultHeaders:{'HTTP-Referer':'http://localhost:3077','X-Title':'WDI Content Generator'}});
+  const r=await ai.chat.completions.create({model:process.env.OPENROUTER_MODEL||'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',messages:[{role:'user',content:`Rewrite the following ${PLATFORMS[platform].name} copy per this instruction: ${instruction}.\n\nHARD RULES: keep every verified fact EXACTLY as-is (numbers, codes, names, fitment). Never add specs, price, warranty, compatibility or placeholders like "...". Output ONLY the rewritten text, same language (Thai).\n\nVERIFIED FACTS:\n${facts.verified.map(f=>`- ${f.label}: ${f.value}`).join('\n')}\n\nTEXT:\n${text.slice(0,2000)}`}],temperature:0.4,max_tokens:1500});
+  const msg=r.choices?.[0]?.message||{};
+  finish(typeof msg.content==='string'?msg.content.trim():'');
+ })().catch(e=>s.status(e?.status===429?503:500).json({error:e?.message||'rewrite failed'}));
+}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/content-history',(q,s)=>{try{
+ const row=initDb().prepare('SELECT * FROM products WHERE product_code=?').get(clean(q.query.code));
+ if(!row)return s.json([]);
+ s.json(getContentHistory(row.id,clean(q.query.platform)||'facebook',clean(q.query.angle||'A').toUpperCase()));
+}catch(e){s.status(500).json({error:e.message});}});
+app.post('/api/content-status',(q,s)=>{try{
+ s.json({ok:true,content:setContentStatus(Number(q.body.id)||0,String(q.body.status||'DRAFT').toUpperCase())});
+}catch(e){s.status(500).json({error:e.message});}});
 app.post('/api/memory/import',async(q,s)=>{try{
  const{spawn}=await import('node:child_process');
  const child=spawn(process.execPath,[path.join(ROOT,'import-memory.mjs')],{cwd:ROOT,windowsHide:true,env:{...process.env}});
