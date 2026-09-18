@@ -1,0 +1,38 @@
+/* ============================================================
+   WDI STUDIO — Design System (single source of truth for tokens)
+   Loaded AFTER studio.css. studio.css should migrate to these
+   tokens over time; new code MUST use them (no hard-coded values).
+   Layer order: style.css > ux.css > studio.css > design-system.css > motion.css
+   ============================================================ */
+:root{
+  /* color */
+  --color-bg:#070a0f;
+  --color-surface:#0e141d;
+  --color-surface-2:#141b25;
+  --color-elevated:#1a2230;
+  --color-border:#26303d;
+  --color-border-soft:#222b36;
+  --color-text:#eef2f7;
+  --color-muted:#9aa5b5;
+  --color-accent:#ffd76a;
+  --color-success:#2ed573;
+  --color-warning:#ff9f43;
+  --color-danger:#ff6b6b;
+  --color-info:#4aa3ff;
+  /* spacing (4pt base) */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px;
+  /* radius */
+  --r-sm:10px; --r-md:14px; --r-lg:18px; --r-xl:24px;
+  /* shadow */
+  --sh-subtle:0 4px 16px #0002;
+  --sh-medium:0 10px 32px #0005;
+  --sh-deep:0 18px 60px #0009;
+  /* motion */
+  --ease-standard:cubic-bezier(.2,0,0,1);
+  --ease-emphasis:cubic-bezier(.3,1.4,.4,1);
+  --duration-fast:150ms;
+  --duration-normal:200ms;
+  --duration-slow:250ms;
+  --duration-page:200ms;
+}

@@ -155,6 +155,13 @@ body.nav-open #navScrim{display:block}
 #mapWorkspace .panel{margin-bottom:12px}
 .map-vehicle{text-align:center}
 #mapCanvas{touch-action:pan-x pan-y}
+/* P2: mode nav active underline (animated) */
+#modeProduct,#modeSet,#modeMap{position:relative}
+#modeProduct.primary::after,#modeSet.primary::after,#modeMap.primary::after{
+  content:"";position:absolute;left:10px;right:10px;bottom:4px;height:2px;border-radius:2px;
+  background:currentColor;animation:navIn var(--duration-normal) var(--ease-standard) both;
+}
+@keyframes navIn{from{transform:scaleX(0);opacity:0}to{transform:scaleX(1);opacity:1}}
 /* Set Builder workspace */
 #setWorkspace .panel{margin-bottom:12px}
 #modeProduct.primary,#modeSet.primary{background:var(--st-accent);border-color:var(--st-accent);color:#141414}

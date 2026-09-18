@@ -72,3 +72,40 @@
   wrapped.__fitmentWrapped=true;
   window.selectProduct=wrapped;
 })();
+
+// P2: delegated spotlight tracking (vars inherit to cards; no per-node listeners).
+(function(){
+  if(!window.matchMedia||!matchMedia('(pointer:fine)').matches)return;
+  let raf=0,lx=0,ly=0;
+  document.addEventListener('pointermove',e=>{
+    lx=e.clientX;ly=e.clientY;
+    if(raf)return;
+    raf=requestAnimationFrame(()=>{raf=0;
+      const t=e.target&&e.target.closest?e.target.closest('#products,.vgrid,#mapCanvas,#setBody'):null;
+      if(!t)return;
+      const r=t.getBoundingClientRect();
+      if(!r.width||!r.height)return;
+      t.style.setProperty('--mx',((lx-r.left)/r.width*100).toFixed(1)+'%');
+      t.style.setProperty('--my',((ly-r.top)/r.height*100).toFixed(1)+'%');
+    });
+  },{passive:true});
+})();
+
+// P2: ESC closes topmost drawer/modal/nav.
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  try{
+    if(typeof closeCreative==='function')closeCreative();
+    const ap=document.getElementById('assistantPanel');
+    if(ap&&ap.classList.contains('open')&&typeof toggleAssistant==='function')toggleAssistant();
+    ['truthModal','sheetModal'].forEach(id=>{const m=document.getElementById(id);if(m)m.classList.remove('on');});
+    document.body.classList.remove('nav-open');
+    const cs=document.getElementById('creativeScrim');if(cs)cs.classList.remove('on');
+    const ds=document.getElementById('drawerScrim');if(ds)ds.classList.remove('on');
+  }catch{}
+});
+
+// P2: pause ambient motion when tab hidden.
+document.addEventListener('visibilitychange',()=>{
+  document.body.classList.toggle('ambient-paused',!!document.hidden);
+});

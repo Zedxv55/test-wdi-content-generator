@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="th">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DIAMOND WDI — AI Content & Short Video Studio</title><link rel="stylesheet" href="style.css?v=20260911e"><link rel="stylesheet" href="ux.css?v=20260911b"><link rel="stylesheet" href="studio.css?v=phaseE2"></head>
+<title>DIAMOND WDI — AI Content & Short Video Studio</title><link rel="stylesheet" href="style.css?v=20260911e"><link rel="stylesheet" href="ux.css?v=20260911b"><link rel="stylesheet" href="studio.css?v=phaseE2"><link rel="stylesheet" href="design-system.css?v=p1"><link rel="stylesheet" href="motion.css?v=p1"></head>
 <body>
 <header><button id="navToggle" onclick="toggleNav()" aria-label="เปิดเมนูสินค้า">☰</button><div class="brand"><img class="brand-logo" src="diamond-logo.png" alt="DIAMOND"><div><strong>DIAMOND</strong><span> WDI AI CONTENT & SHORT VIDEO STUDIO</span></div></div><div class="header-status"><div id="health" class="status" title="system status">● Online</div><div id="dataSource" class="data-source"><i></i> ตรวจฐานข้อมูล...</div><button class="hbtn" onclick="syncWdi()" title="ซิงค์ข้อมูล WDI">↻ Sync</button><button class="hbtn primary" onclick="toggleAssistant()" aria-label="เปิด AI Assistant">🤖 Assistant</button><button class="hbtn" onclick="setMode('product')" id="modeProduct">Product</button><button class="hbtn" onclick="setMode('set')" id="modeSet">🎬 Set</button><button class="hbtn" onclick="setMode('map')" id="modeMap">🗺 Map</button><details id="systemBox"><summary>System</summary><div class="sysdrop" id="systemDrop">กำลังโหลดข้อมูลระบบ...</div></details></div></header>
 <main>
@@ -16,17 +16,17 @@
 <section id="mapWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🗺 Vehicle Product Map</h2><span>ค้นดูสินค้าของ WDI ตามรุ่นรถ</span></div><div id="mapBody" style="padding:14px 16px"></div></div></section></main>
 <div id="pageBusy"><div class="busy-card"><div class="busy-spinner"></div><b id="busyTitle">กำลังทำงาน...</b><small id="busySecs">กรุณารอสักครู่ ระบบกำลังประมวลผล</small></div></div>
 <div id="navScrim" onclick="toggleNav()"></div>
-<div id="truthModal" onclick="if(event.target===this)closeTruth()"><div class="truth-card"><div class="drawer-head" style="border:0;padding:0 0 10px">📋 ข้อมูลสินค้าทั้งหมด<button class="hbtn" onclick="closeTruth()" aria-label="ปิด">✕</button></div><div id="truthBody"></div></div></div>
-<div id="sheetModal" onclick="if(event.target===this)closeSheet()"><div class="truth-card"><div class="drawer-head" style="border:0;padding:0 0 10px">🪪 Product Sheet<button class="hbtn" onclick="closeSheet()" aria-label="ปิด">✕</button></div><div id="sheetBody"></div></div></div>
+<div id="truthModal" role="dialog" aria-modal="true" aria-label="ข้อมูลสินค้า" onclick="if(event.target===this)closeTruth()"><div class="truth-card"><div class="drawer-head" style="border:0;padding:0 0 10px">📋 ข้อมูลสินค้าทั้งหมด<button class="hbtn" onclick="closeTruth()" aria-label="ปิด">✕</button></div><div id="truthBody"></div></div></div>
+<div id="sheetModal" role="dialog" aria-modal="true" aria-label="Product Sheet" onclick="if(event.target===this)closeSheet()"><div class="truth-card"><div class="drawer-head" style="border:0;padding:0 0 10px">🪪 Product Sheet<button class="hbtn" onclick="closeSheet()" aria-label="ปิด">✕</button></div><div id="sheetBody"></div></div></div>
 <div id="creativeScrim" onclick="closeCreative()"></div>
-<aside id="creativeDrawer" aria-label="เลือกแนวคลิป">
+<aside id="creativeDrawer" role="dialog" aria-modal="true" aria-label="เลือกแนวคลิป">
 <div class="drawer-head">🎬 เลือกแนวคลิป<button class="hbtn" onclick="closeCreative()" aria-label="ปิด">✕</button></div>
 <div class="drawer-search"><input id="vSearch" placeholder="ค้นหาแนว เช่น 360 / FAQ / LINE" oninput="vFilter=this.value.toLowerCase();renderVChips()" aria-label="ค้นหาแนวคลิป"></div>
 <div id="vchips" class="vgrid"></div>
 <div id="durSeg"></div>
 </aside>
 <div id="drawerScrim" onclick="toggleAssistant()"></div>
-<aside id="assistantPanel" aria-label="AI Assistant">
+<aside id="assistantPanel" role="dialog" aria-modal="true" aria-label="AI Assistant">
 <div class="drawer-head">🤖 WDI Assistant <small style="opacity:.6;font-weight:400">ตอบจาก Production DB</small><button class="hbtn" onclick="toggleAssistant()" aria-label="ปิด">✕</button></div>
 <div class="qprompts" id="qprompts"></div>
 <div id="assistantAns" style="padding:12px 14px;overflow:auto;white-space:pre-wrap;font-size:13px;flex:1;min-height:120px">ถามได้เช่น “04-60610L ทำถึงไหนแล้ว” / “ตัวไหนยังไม่ทำ” / “วันนี้ควรทำตัวไหนต่อ”</div>
