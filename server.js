@@ -12,6 +12,9 @@ import { ensureSheet, sheetSummary, sheetPromptBlock } from './sheets.mjs';
 import { ANGLES, PLATFORMS, loadBusinessConfig, contactBlock, buildFacts, buildHashtags, buildKeywords, buildDistPrompt, qaContent, scoreContent } from './content-dist.mjs';
 import { saveContentVersion, getCurrentContent, getContentHistory, setContentStatus } from './db.mjs';
 import { planDurations, buildStoryboard, loadCapabilities, loadStoryboardRows } from './flow.mjs';
+import { providerStatus, providerGenerate, saveAsset, aspectDims, QUALITY_PX } from './image-provider.mjs';
+import { dnaLockText, buildSceneImagePrompt, buildSceneRefs, qaImage, compileFlowPack } from './storyboard.mjs';
+import { createStoryboard, listStoryboards, getStoryboard, patchStoryboard, addScene, patchScene, deleteScene, reorderScenes, createGeneration, setGenerationStatus, addGenerationAsset, addGenerationRefs, getGeneration } from './db.mjs';
 import { autoGroupItems, buildSetPlan, buildScenePrompt, qcSetPlan, parseCampaignTSV, SET_ROLES } from './set-builder.mjs';
 import { collectBrands, collectModels, collectModelProducts, classifyVehicleImage, splitSide, guessGroup, compareFitment, b64name } from './vehicle-map.mjs';
 import { createSet, listSets, getSetDetail, addSetItems, updateSetItem, removeSetItem, setSetStatus, saveSetPlan, getSetPlan, upsertVehicleModel, linkVehicleProducts } from './db.mjs';
@@ -758,6 +761,184 @@ app.get('/api/vehicle/search',(q,s)=>{try{
  for(const [b,ms] of Object.entries(c.models||{})){for(const m of (ms||[])){if((m.model||'').toLowerCase().includes(query))models.push({brand:b,model:m.model});if(models.length>=8)break;}if(models.length>=8)break;}
  s.json({brands,models});
 }catch(e){s.status(500).json({error:e.message});}});
+// ---------- STORYBOARD STUDIO API (visual DNA→image→flow workspace) ----------
+function sbDna(productCode) {
+  const d = initDb();
+  const prod = d.prepare('SELECT * FROM products WHERE product_code=?').get(String(productCode || '').trim());
+  if (!prod) return { code: productCode, name: '', category: '', verified: [] };
+  let verified = [];
+  try {
+    const sh = getCurrentSheet(prod.id);
+    if (sh) {
+      const idn = JSON.parse(sh.identity_json || '{}');
+      for (const [k, c] of Object.entries(idn.components || {})) {
+        if (c && c.status === 'VERIFIED') verified.push({ label: c.label || k, value: c.value });
+      }
+    }
+  } catch {}
+  const fit = clean(prod.fitment_text);
+  if (fit) verified.push({ label: 'Fitment', value: fit });
+  return { code: prod.product_code, name: prod.product_name_th || prod.product_name_en, category: prod.category, verified, images: [prod.main_image_url, ...(prod.additional_images || '').split(';')].map(s => clean(s)).filter(Boolean) };
+}
+app.get('/api/image/status', (q, s) => { try { s.json(providerStatus()); } catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/storyboards', (q, s) => { try {
+  const sb = createStoryboard({ product_code: q.body.product_code, name: q.body.name || '', brief: q.body.brief || {}, settings: q.body.settings || {}, flow_model: q.body.flow_model || '' });
+  const total = Math.max(4, Math.min(120, Number(q.body.totalSecs) || 30));
+  const model = q.body.flow_model || loadCapabilities().defaultModel;
+  const plan = planDurations(total, model);
+  const dna = sbDna(sb.product_code);
+  const refs = (dna.images || []).slice(0, 3).map((u, i) => ({ url: u, source: 'wdi', view: i === 0 ? 'HERO' : 'ADDITIONAL_' + i }));
+  plan.segments.forEach((dur, i) => addScene(sb.id, {
+    duration_secs: dur, purpose: ['Introduce exact product', 'Detail reveal', 'Final hero'][i] || ('Beat ' + (i + 1)),
+    product_codes: sb.product_code, refs, continuity: i === 0 ? 'set title context' : 'same product geometry from references'
+  }));
+  s.json({ ok: true, board: getStoryboard(sb.id) });
+} catch (e) { s.status(400).json({ error: e.message }); } });
+app.get('/api/storyboards', (q, s) => { try { s.json(listStoryboards(clean(q.query.code))); } catch (e) { s.status(500).json({ error: e.message }); } });
+app.get('/api/storyboards/:id', (q, s) => { try {
+  const b = getStoryboard(Number(q.params.id) || 0);
+  if (!b) return s.status(404).json({ error: 'not found' });
+  s.json(b);
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.patch('/api/storyboards/:id', (q, s) => { try {
+  s.json({ ok: true, board: patchStoryboard(Number(q.params.id) || 0, q.body || {}) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/storyboards/:id/scenes', (q, s) => { try {
+  s.json({ ok: true, scene: addScene(Number(q.params.id) || 0, q.body || {}) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.patch('/api/storyboards/scenes/:sid', (q, s) => { try {
+  s.json({ ok: true, scene: patchScene(Number(q.params.sid) || 0, q.body || {}) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.delete('/api/storyboards/scenes/:sid', (q, s) => { try {
+  s.json({ ok: deleteScene(Number(q.params.sid) || 0) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/storyboards/:id/reorder', (q, s) => { try {
+  reorderScenes(Number(q.params.id) || 0, Array.isArray(q.body.order) ? q.body.order.map(Number) : []);
+  s.json({ ok: true, board: getStoryboard(Number(q.params.id) || 0) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/storyboards/:id/generate', async (q, s) => { try {
+  const sb = getStoryboard(Number(q.params.id) || 0);
+  if (!sb) return s.status(404).json({ error: 'not found' });
+  const st = providerStatus();
+  if (!st.configured) return s.status(503).json({ error: 'Image generation provider not configured' });
+  const settings = { aspect: clean(q.body.aspect) || '1:1', quality: clean(q.body.quality) || 'Standard', ...(q.body.settings || {}) };
+  const caps = loadCapabilities();
+  const mk = sb.flow_model && caps.models[sb.flow_model] ? sb.flow_model : caps.defaultModel;
+  const mcaps = caps.models[mk] || {};
+  const aspects = mcaps.aspect_ratios || ['1:1'];
+  if (!aspects.includes(settings.aspect)) return s.status(400).json({ error: `Unsupported aspect ratio ${settings.aspect} for ${mk}`, supported: aspects });
+  const px = QUALITY_PX[settings.quality] || QUALITY_PX.Standard;
+  const { w, h } = aspectDims(settings.aspect, px);
+  const dna = sbDna(sb.product_code);
+  const brief = { ...(sb.brief_json ? JSON.parse(sb.brief_json) : {}), ...(q.body.brief || {}) };
+  const want = Array.isArray(q.body.scene_ids) && q.body.scene_ids.length
+    ? sb.scenes.filter(sc => q.body.scene_ids.map(Number).includes(sc.id))
+    : sb.scenes;
+  if (!want.length) return s.status(400).json({ error: 'no scenes selected' });
+  const results = [];
+  for (const sc of want) {
+    const refs = buildSceneRefs({ dnaRefs: dna.images, sceneRefs: JSON.parse(sc.refs_json || '[]'), generated: [] });
+    const { prompt, negative } = buildSceneImagePrompt({ dna, scene: { scene_id: sc.scene_id, purpose: sc.purpose, shot: sc.shot, camera: sc.camera, environment: sc.environment || brief.environment, lighting: sc.lighting || brief.lighting, action: sc.action }, brief, settings });
+    const gen = createGeneration(sc.id, { prompt, negative, model: mk, provider: st.provider, aspect: settings.aspect, quality: settings.quality, size: `${w}x${h}`, refs, status: 'RUNNING' });
+    try {
+      const out = await providerGenerate({ prompt, w, h });
+      const saved = saveAsset(out.buffer, out.mime);
+      addGenerationAsset(gen.id, { kind: 'image', path: saved.rel, mime: out.mime, bytes: saved.bytes });
+      addGenerationRefs(gen.id, refs.slice(0, 6));
+      const qa = qaImage({ scene: sc, prompt, refsCount: refs.length, aspect: settings.aspect, supportedAspects: aspects, sizeOk: true });
+      initDb().prepare('UPDATE storyboard_generations SET qa_json=? WHERE id=?').run(JSON.stringify(qa), gen.id);
+      setGenerationStatus(gen.id, qa.status === 'FAIL' ? 'FAILED' : 'GENERATED');
+      results.push({ scene: sc.scene_id, ok: true, generation_id: gen.id, version: gen.version, qa, asset: saved.rel });
+    } catch (e) {
+      setGenerationStatus(gen.id, 'FAILED', e?.message || 'failed');
+      results.push({ scene: sc.scene_id, ok: false, generation_id: gen.id, version: gen.version, error: e?.message || 'failed' });
+    }
+  }
+  s.json({ ok: true, results, board: getStoryboard(sb.id) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.get('/api/storyboards/:id/history', (q, s) => { try {
+  const b = getStoryboard(Number(q.params.id) || 0);
+  if (!b) return s.status(404).json({ error: 'not found' });
+  const out = [];
+  for (const sc of b.scenes) for (const g of sc.generations) out.push({ scene: sc.scene_id, ...g });
+  s.json(out);
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/storyboards/generations/:gid/restore', (q, s) => { try {
+  const d = initDb();
+  const g = d.prepare('SELECT * FROM storyboard_generations WHERE id=?').get(Number(q.params.gid) || 0);
+  if (!g) return s.status(404).json({ error: 'not found' });
+  d.prepare('UPDATE storyboard_generations SET is_current=0 WHERE scene_id=?').run(g.scene_id);
+  d.prepare('UPDATE storyboard_generations SET is_current=1 WHERE id=?').run(g.id);
+  s.json({ ok: true, generation: getGeneration(g.id) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.get('/api/storyboards/:id/flow-pack', (q, s) => { try {
+  const b = getStoryboard(Number(q.params.id) || 0);
+  if (!b) return s.status(404).json({ error: 'not found' });
+  const full = [];
+  for (const sc of b.scenes) {
+    const row = initDb().prepare('SELECT * FROM storyboard_scenes WHERE id=?').get(sc.id);
+    row.refs = JSON.parse(row.refs_json || '[]');
+    row.generations = sc.generations;
+    for (const g of row.generations) {
+      const gd = getGeneration(g.id);
+      g.prompt = gd.prompt; g.negative_prompt = gd.negative_prompt; g.assets = gd.assets;
+    }
+    full.push(row);
+  }
+  s.json(compileFlowPack({ storyboard: b, scenes: full, brief: b.brief_json ? JSON.parse(b.brief_json) : {}, model: b.flow_model }));
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.get('/api/storyboards/:id/export.:fmt', (q, s) => { try {
+  const b = getStoryboard(Number(q.params.id) || 0);
+  if (!b) return s.status(404).json({ error: 'not found' });
+  const pack = await2pack(b);
+  const fmt = clean(q.params.fmt);
+  const base = `flow-pack-${b.product_code || b.id}`;
+  if (fmt === 'json') { s.set('Content-Type', 'application/json'); s.set('Content-Disposition', `attachment; filename="${base}.json"`); return s.send(JSON.stringify(pack, null, 2)); }
+  if (fmt === 'txt') {
+    const t = [`FLOW PACKAGE — ${b.product_code}`, `model: ${pack.model}`, `generated: ${pack.generated_at}`, ''] ;
+    for (const sc of pack.scenes) t.push(`[${sc.scene_id} ${sc.duration}] ${sc.purpose}`, sc.prompt, sc.negative_prompt ? 'NEGATIVE: ' + sc.negative_prompt : '', '---', '');
+    s.set('Content-Type', 'text/plain; charset=utf-8');
+    s.set('Content-Disposition', `attachment; filename="${base}.txt"`);
+    return s.send(t.join('\n'));
+  }
+  if (fmt === 'xlsx') {
+    const rows = [['scene_id', 'duration', 'purpose', 'products', 'prompt', 'negative_prompt', 'references', 'image', 'continuity']];
+    for (const sc of pack.scenes) rows.push([sc.scene_id, sc.duration, sc.purpose, (sc.products || []).join(','), sc.prompt, sc.negative_prompt, (sc.references || []).map(r => r.url || r).join(' | '), sc.image || '', sc.continuity || '']);
+    const wb = XLSX.utils.book_new();
+    wb.SheetNames.push('flow-pack');
+    wb.Sheets['flow-pack'] = XLSX.utils.aoa_to_sheet(rows);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    s.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    s.set('Content-Disposition', `attachment; filename="${base}.xlsx"`);
+    return s.send(buf);
+  }
+  return s.status(400).json({ error: 'fmt must be txt|json|xlsx' });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+function await2pack(b) {
+  const full = [];
+  for (const sc of b.scenes) {
+    const row = initDb().prepare('SELECT * FROM storyboard_scenes WHERE id=?').get(sc.id);
+    row.refs = JSON.parse(row.refs_json || '[]');
+    row.generations = sc.generations;
+    for (const g of row.generations) {
+      const gd = getGeneration(g.id);
+      g.prompt = gd.prompt; g.negative_prompt = gd.negative_prompt; g.assets = gd.assets;
+    }
+    full.push(row);
+  }
+  return compileFlowPack({ storyboard: b, scenes: full, brief: b.brief_json ? JSON.parse(b.brief_json) : {}, model: b.flow_model });
+}
+app.get('/api/image/asset/:id', (q, s) => { try {
+  const d = initDb();
+  const a = d.prepare('SELECT * FROM generation_assets WHERE id=?').get(Number(q.params.id) || 0);
+  if (!a) return s.status(404).json({ error: 'not found' });
+  const abs = path.join(ROOT, String(a.path || '').replace(/^\//, ''));
+  const gen = path.join(ROOT, 'data', 'generated') + path.sep;
+  if (!abs.startsWith(gen) || !fs.existsSync(abs)) return s.status(404).json({ error: 'not found' });
+  s.set('Content-Type', a.mime || 'image/jpeg');
+  s.set('Cache-Control', 'public, max-age=86400');
+  s.sendFile(abs);
+} catch (e) { s.status(500).json({ error: e.message }); } });
 if(!process.env.VERCEL)app.listen(PORT,()=>console.log(`WDI Content Generator: http://localhost:${PORT}`));
 export default app;
 

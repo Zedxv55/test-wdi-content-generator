@@ -9,6 +9,7 @@
 <button data-mode="product" onclick="setMode('product')" title="Product"><span class="ri">📦</span><span class="rl">Product</span></button>
 <button data-mode="set" onclick="setMode('set')" title="Set Builder"><span class="ri">🎬</span><span class="rl">Set</span></button>
 <button data-mode="map" onclick="setMode('map')" title="Vehicle Map"><span class="ri">🗺</span><span class="rl">Map</span></button>
+<button data-mode="image" onclick="setMode('image')" title="Image Studio"><span class="ri">🖼</span><span class="rl">Image</span></button>
 <button data-mode="dist" onclick="navDist()" title="Distribution"><span class="ri">📣</span><span class="rl">Dist</span></button>
 <button data-mode="pub" onclick="navPub()" title="Publishing"><span class="ri">📅</span><span class="rl">Pub</span></button>
 </nav>
@@ -24,6 +25,7 @@
 </section>
 <section id="setWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🎬 Set Builder</h2><span id="setCount"></span></div><div id="setBody" style="padding:14px 16px"></div></div></section>
 <section id="mapWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🗺 Vehicle Product Map</h2><span>ค้นดูสินค้าของ WDI ตามรุ่นรถ</span></div><div id="mapBody" style="padding:14px 16px"></div></div></section>
+<section id="imgWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🖼 Image Studio</h2><span id="imgCtx">DNA → Storyboard → Image → Flow</span></div><div id="imgBody" style="padding:14px 16px"></div></div></section>
 <section id="distWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>📣 Distribution</h2><span id="distCtx"></span></div><div id="distBody" style="padding:14px 16px"></div></div></section>
 <section id="pubWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>📅 Publishing</h2><span id="pubCtx"></span></div><div id="pubBody" style="padding:14px 16px"></div></div></section>
 </div>
@@ -49,9 +51,14 @@
 <div id="sysDiag" style="padding:8px 14px;border-top:1px solid #232b36;font-size:11px;color:#8b95a4"></div>
 </aside>
 <div id="histScrim" onclick="closeHistory()"></div>
+<div id="sceneScrim" onclick="closeSceneEditor()"></div>
+<aside id="sceneDrawer" role="dialog" aria-modal="true" aria-label="Scene editor">
+<div class="drawer-head">🎬 Scene Editor<button class="hbtn" onclick="closeSceneEditor()" aria-label="ปิด">✕</button></div>
+<div id="sceneBody" style="padding:12px 14px;overflow:auto"></div>
+</aside>
 <aside id="histDrawer" role="dialog" aria-modal="true" aria-label="ประวัติงาน">
 <div class="drawer-head">🕘 ประวัติงาน<button class="hbtn" onclick="closeHistory()" aria-label="ปิด">✕</button></div>
 <div id="histBody" style="padding:12px 14px;overflow:auto"></div>
 </aside>
-<script src="app.js?v=20260911e"></script><script src="ad-features.js?v=20260911d"></script><script src="dist-studio.js?v=1"></script><script src="set-builder.js?v=1"></script><script src="vehicle-map.js?v=1"></script><script src="ui-enhance.js?v=20260911b"></script>
+<script src="app.js?v=20260911e"></script><script src="ad-features.js?v=20260911d"></script><script src="dist-studio.js?v=1"></script><script src="set-builder.js?v=1"></script><script src="vehicle-map.js?v=1"></script><script src="dna-board.js?v=1"></script><script src="image-flow.js?v=1"></script><script src="ui-enhance.js?v=20260911b"></script>
 </body></html>

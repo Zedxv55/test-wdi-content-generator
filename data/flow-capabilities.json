@@ -5,6 +5,10 @@
       "durations": [4, 6, 8, 10],
       "supportsReferences": true,
       "supportsFirstLastFrame": true,
+      "aspect_ratios": ["1:1", "16:9", "9:16", "4:5", "3:4", "4:3"],
+      "quality_modes": ["Draft", "Standard", "High"],
+      "sizes": [768, 1024, 1344],
+      "max_references": 6,
       "notes": "Ingredients/references supported; segment length varies by sub-model"
     },
     "veo-3.1-lite": {
@@ -12,6 +16,10 @@
       "durations": [4, 6, 8],
       "supportsReferences": "model-dependent",
       "supportsFirstLastFrame": false,
+      "aspect_ratios": ["16:9", "9:16"],
+      "quality_modes": ["Draft", "Standard"],
+      "sizes": [768, 1024],
+      "max_references": 3,
       "notes": "Reference support depends on endpoint"
     },
     "veo-3.1-fast": {
@@ -19,6 +27,10 @@
       "durations": [4, 6, 8],
       "supportsReferences": "model-dependent",
       "supportsFirstLastFrame": false,
+      "aspect_ratios": ["16:9", "9:16"],
+      "quality_modes": ["Draft", "Standard"],
+      "sizes": [768, 1024],
+      "max_references": 3,
       "notes": ""
     },
     "veo-3.1-quality": {
@@ -26,6 +38,10 @@
       "durations": [4, 6, 8],
       "supportsReferences": "model-dependent",
       "supportsFirstLastFrame": false,
+      "aspect_ratios": ["16:9", "9:16", "1:1"],
+      "quality_modes": ["Standard", "High"],
+      "sizes": [1024, 1344],
+      "max_references": 3,
       "notes": "Highest quality, slower"
     }
   },

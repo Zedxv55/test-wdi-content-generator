@@ -2,10 +2,10 @@
 // Product workflow untouched. All set logic via /api/sets*.
 let setModeCur = 'product', curSetId = 0, curSet = null, setPlanVer = 0;
 
-const WS_TITLES = { product: 'Product Studio', set: 'Set Builder', map: 'Vehicle Product Map', dist: 'Content Distribution', pub: 'Publishing' };
+const WS_TITLES = { product: 'Product Studio', set: 'Set Builder', map: 'Vehicle Product Map', image: 'Image Studio', dist: 'Content Distribution', pub: 'Publishing' };
 function setMode(m) {
   setModeCur = m;
-  const secs = { product: document.querySelector('.workspace-main'), set: $('setWorkspace'), map: $('mapWorkspace'), dist: $('distWorkspace'), pub: $('pubWorkspace') };
+  const secs = { product: document.querySelector('.workspace-main'), set: $('setWorkspace'), map: $('mapWorkspace'), image: $('imgWorkspace'), dist: $('distWorkspace'), pub: $('pubWorkspace') };
   for (const [k, el] of Object.entries(secs)) {
     if (!el) continue;
     if (k === 'product') el.style.display = (m === 'product') ? '' : 'none';
@@ -18,8 +18,10 @@ function setMode(m) {
   const wn = $('wsName'); if (wn) wn.textContent = WS_TITLES[m] || 'Product Studio';
   if (m === 'set') renderSetHome();
   else if (m === 'map') { if (typeof renderMapHome === 'function') renderMapHome(); }
+  else if (m === 'image') { if (typeof renderImageHome === 'function') renderImageHome(); }
   else if (m === 'dist') { if (typeof renderDistHome === 'function') renderDistHome(); }
   else if (m === 'pub') { if (typeof renderPubHome === 'function') renderPubHome(); }
+  else if (m === 'image') { if (typeof renderImageHome === 'function') renderImageHome(); }
 }
 function navDist() {
   if (!window.current) { showToast('เลือกสินค้าก่อน แล้วค่อยเปิด Distribution', false); setMode('product'); return; }

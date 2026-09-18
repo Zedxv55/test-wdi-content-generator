@@ -211,6 +211,76 @@ CREATE TABLE IF NOT EXISTS set_plans(
 );
 CREATE INDEX IF NOT EXISTS idx_set_items ON campaign_set_items(set_id);
 CREATE INDEX IF NOT EXISTS idx_set_plans ON set_plans(set_id);
+CREATE TABLE IF NOT EXISTS storyboards(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_code TEXT NOT NULL,
+  name TEXT DEFAULT '',
+  brief_json TEXT DEFAULT '',
+  settings_json TEXT DEFAULT '',
+  flow_model TEXT DEFAULT '',
+  status TEXT DEFAULT 'DRAFT',
+  created_at TEXT DEFAULT '',
+  updated_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS storyboard_scenes(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  storyboard_id INTEGER NOT NULL REFERENCES storyboards(id),
+  scene_id TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  duration_secs INTEGER DEFAULT 10,
+  purpose TEXT DEFAULT '',
+  product_codes TEXT DEFAULT '',
+  refs_json TEXT DEFAULT '',
+  shot TEXT DEFAULT '',
+  camera TEXT DEFAULT '',
+  environment TEXT DEFAULT '',
+  lighting TEXT DEFAULT '',
+  action TEXT DEFAULT '',
+  continuity TEXT DEFAULT '',
+  start_state TEXT DEFAULT '',
+  end_state TEXT DEFAULT '',
+  negative_prompt TEXT DEFAULT '',
+  created_at TEXT DEFAULT '',
+  updated_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS storyboard_generations(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scene_id INTEGER NOT NULL REFERENCES storyboard_scenes(id),
+  version INTEGER NOT NULL,
+  prompt TEXT DEFAULT '',
+  negative_prompt TEXT DEFAULT '',
+  model TEXT DEFAULT '',
+  provider TEXT DEFAULT '',
+  aspect_ratio TEXT DEFAULT '',
+  quality TEXT DEFAULT '',
+  size TEXT DEFAULT '',
+  refs_json TEXT DEFAULT '',
+  status TEXT DEFAULT 'GENERATED',
+  error TEXT DEFAULT '',
+  qa_json TEXT DEFAULT '',
+  created_at TEXT DEFAULT '',
+  is_current INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS generation_assets(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  generation_id INTEGER NOT NULL REFERENCES storyboard_generations(id),
+  kind TEXT DEFAULT 'image',
+  path TEXT DEFAULT '',
+  mime TEXT DEFAULT '',
+  bytes INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS generation_references(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  generation_id INTEGER NOT NULL REFERENCES storyboard_generations(id),
+  image_url TEXT DEFAULT '',
+  source TEXT DEFAULT '',
+  view_type TEXT DEFAULT '',
+  sort_order INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sb_product ON storyboards(product_code);
+CREATE INDEX IF NOT EXISTS idx_sb_scenes ON storyboard_scenes(storyboard_id);
+CREATE INDEX IF NOT EXISTS idx_sb_gens ON storyboard_generations(scene_id);
 CREATE TABLE IF NOT EXISTS vehicle_models(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   brand TEXT NOT NULL,
@@ -767,4 +837,132 @@ export function linkVehicleProducts(vehicleId, productIds) {
   return { linked: n, version: cur + 1 };
 }
 
+// ---------- STORYBOARD STUDIO (visual workspace; references DNA, never copies it) ----------
+export function createStoryboard({ product_code, name = '', brief = {}, settings = {}, flow_model = '' }) {
+  const d = initDb();
+  if (!String(product_code || '').trim()) throw new Error('product_code required');
+  const ts = now();
+  const r = d.prepare(`INSERT INTO storyboards (product_code,name,brief_json,settings_json,flow_model,status,created_at,updated_at)
+    VALUES (?,?,?,?,?,'DRAFT',?,?)`).run(String(product_code).trim(), name, JSON.stringify(brief || {}), JSON.stringify(settings || {}), flow_model, ts, ts);
+  return d.prepare('SELECT * FROM storyboards WHERE id=?').get(r.lastInsertRowid);
+}
+export function listStoryboards(code) {
+  return initDb().prepare('SELECT * FROM storyboards WHERE product_code=? ORDER BY id DESC').all(String(code || '').trim());
+}
+export function getStoryboard(id) {
+  const d = initDb();
+  const sb = d.prepare('SELECT * FROM storyboards WHERE id=?').get(id);
+  if (!sb) return null;
+  sb.scenes = d.prepare('SELECT * FROM storyboard_scenes WHERE storyboard_id=? ORDER BY sort_order,id').all(id);
+  for (const sc of sb.scenes) {
+    sc.generations = d.prepare('SELECT id,version,model,provider,aspect_ratio,quality,size,status,error,created_at,is_current FROM storyboard_generations WHERE scene_id=? ORDER BY version').all(sc.id);
+    for (const g of sc.generations) {
+      g.assets = d.prepare('SELECT id,path,mime,bytes FROM generation_assets WHERE generation_id=?').all(g.id);
+    }
+  }
+  return sb;
+}
+export function patchStoryboard(id, patch = {}) {
+  const d = initDb();
+  const sets = [], vals = [];
+  if (patch.name !== undefined) { sets.push('name=?'); vals.push(patch.name); }
+  if (patch.brief !== undefined) { sets.push('brief_json=?'); vals.push(JSON.stringify(patch.brief)); }
+  if (patch.settings !== undefined) { sets.push('settings_json=?'); vals.push(JSON.stringify(patch.settings)); }
+  if (patch.flow_model !== undefined) { sets.push('flow_model=?'); vals.push(patch.flow_model); }
+  if (patch.status !== undefined) { sets.push('status=?'); vals.push(patch.status); }
+  if (!sets.length) return d.prepare('SELECT * FROM storyboards WHERE id=?').get(id);
+  sets.push('updated_at=?'); vals.push(now(), id);
+  d.prepare(`UPDATE storyboards SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  return d.prepare('SELECT * FROM storyboards WHERE id=?').get(id);
+}
+export function addScene(boardId, s = {}) {
+  const d = initDb();
+  const max = d.prepare('SELECT COUNT(*) AS c FROM storyboard_scenes WHERE storyboard_id=?').get(boardId).c;
+  const ts = now();
+  const n = max + 1;
+  const r = d.prepare(`INSERT INTO storyboard_scenes
+    (storyboard_id,scene_id,sort_order,duration_secs,purpose,product_codes,refs_json,shot,camera,environment,lighting,action,continuity,start_state,end_state,negative_prompt,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(boardId, s.scene_id || ('SC' + String(n).padStart(2, '0')),
+    s.sort_order !== undefined ? s.sort_order : n - 1, s.duration_secs || 10, s.purpose || '', s.product_codes || '',
+    JSON.stringify(s.refs || []), s.shot || '', s.camera || '', s.environment || '', s.lighting || '',
+    s.action || '', s.continuity || '', s.start_state || '', s.end_state || '', s.negative_prompt || '', ts, ts);
+  touchStoryboard(boardId);
+  return d.prepare('SELECT * FROM storyboard_scenes WHERE id=?').get(r.lastInsertRowid);
+}
+export function patchScene(id, patch = {}) {
+  const d = initDb();
+  const cols = ['scene_id', 'sort_order', 'duration_secs', 'purpose', 'product_codes', 'shot', 'camera', 'environment', 'lighting', 'action', 'continuity', 'start_state', 'end_state', 'negative_prompt'];
+  const sets = [], vals = [];
+  for (const k of cols) {
+    if (patch[k] === undefined) continue;
+    sets.push(`${k}=?`);
+    vals.push(k === 'refs_json' ? patch[k] : patch[k]);
+  }
+  if (patch.refs !== undefined) { sets.push('refs_json=?'); vals.push(JSON.stringify(patch.refs)); }
+  if (!sets.length) return d.prepare('SELECT * FROM storyboard_scenes WHERE id=?').get(id);
+  sets.push('updated_at=?'); vals.push(now(), id);
+  d.prepare(`UPDATE storyboard_scenes SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  const row = d.prepare('SELECT * FROM storyboard_scenes WHERE id=?').get(id);
+  if (row) touchStoryboard(row.storyboard_id);
+  return row;
+}
+export function deleteScene(id) {
+  const d = initDb();
+  const row = d.prepare('SELECT * FROM storyboard_scenes WHERE id=?').get(id);
+  if (!row) return false;
+  const gens = d.prepare('SELECT id FROM storyboard_generations WHERE scene_id=?').all(id);
+  for (const g of gens) {
+    d.prepare('DELETE FROM generation_assets WHERE generation_id=?').run(g.id);
+    d.prepare('DELETE FROM generation_references WHERE generation_id=?').run(g.id);
+  }
+  d.prepare('DELETE FROM storyboard_generations WHERE scene_id=?').run(id);
+  d.prepare('DELETE FROM storyboard_scenes WHERE id=?').run(id);
+  touchStoryboard(row.storyboard_id);
+  return true;
+}
+export function reorderScenes(boardId, orderedIds) {
+  const d = initDb();
+  const tx = (fn) => { d.exec('BEGIN'); try { fn(); d.exec('COMMIT'); } catch (e) { try { d.exec('ROLLBACK'); } catch {} throw e; } };
+  tx(() => {
+    orderedIds.forEach((sid, i) => d.prepare('UPDATE storyboard_scenes SET sort_order=?, updated_at=? WHERE id=? AND storyboard_id=?').run(i, now(), sid, boardId));
+  });
+  touchStoryboard(boardId);
+  return true;
+}
+function touchStoryboard(boardId) {
+  try { initDb().prepare('UPDATE storyboards SET updated_at=? WHERE id=?').run(now(), boardId); } catch {}
+}
+export function createGeneration(sceneId, g = {}) {
+  const d = initDb();
+  const cur = d.prepare('SELECT COALESCE(MAX(version),0) AS m FROM storyboard_generations WHERE scene_id=?').get(sceneId).m;
+  const n = cur + 1;
+  d.prepare('UPDATE storyboard_generations SET is_current=0 WHERE scene_id=?').run(sceneId);
+  const r = d.prepare(`INSERT INTO storyboard_generations
+    (scene_id,version,prompt,negative_prompt,model,provider,aspect_ratio,quality,size,refs_json,status,error,qa_json,created_at,is_current)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`).run(sceneId, n, g.prompt || '', g.negative || '', g.model || '', g.provider || '',
+    g.aspect || '', g.quality || '', g.size || '', JSON.stringify(g.refs || []), g.status || 'GENERATED', g.error || '', JSON.stringify(g.qa || {}), now());
+  return { id: Number(r.lastInsertRowid), version: n };
+}
+export function setGenerationStatus(genId, status, error = '') {
+  initDb().prepare('UPDATE storyboard_generations SET status=?, error=? WHERE id=?').run(status, error, genId);
+}
+export function addGenerationAsset(genId, { kind = 'image', path = '', mime = '', bytes = 0 }) {
+  const d = initDb();
+  const r = d.prepare('INSERT INTO generation_assets (generation_id,kind,path,mime,bytes,created_at) VALUES (?,?,?,?,?,?)')
+    .run(genId, kind, path, mime, bytes, now());
+  return { id: Number(r.lastInsertRowid) };
+}
+export function addGenerationRefs(genId, refs) {
+  const d = initDb();
+  const stmt = d.prepare('INSERT INTO generation_references (generation_id,image_url,source,view_type,sort_order) VALUES (?,?,?,?,?)');
+  (refs || []).forEach((r, i) => stmt.run(genId, r.url || '', r.source || '', r.view || '', i));
+}
+export function getGeneration(genId) {
+  const d = initDb();
+  const g = d.prepare('SELECT * FROM storyboard_generations WHERE id=?').get(genId);
+  if (!g) return null;
+  g.assets = d.prepare('SELECT * FROM generation_assets WHERE generation_id=?').all(genId);
+  g.references = d.prepare('SELECT * FROM generation_references WHERE generation_id=? ORDER BY sort_order').all(genId);
+  return g;
+}
 export function dbFile() { return memoryMode ? ':memory:' : DB_FILE; }
