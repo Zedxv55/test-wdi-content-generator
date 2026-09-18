@@ -209,3 +209,12 @@ async function mapImagePrompt(btn) {
     el.innerHTML = `<div class="box"><div class="box-title"><h3>✨ Vehicle Map Prompt</h3><button onclick="copyText(window._mapPrompt,this)">Copy</button></div><div class="out" style="white-space:pre-wrap">${esc(r.prompt)}</div></div>`;
   } catch (e) { el.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; }
 }
+// ---------- map preselect (moved from shell.js; no duplicates) ----------
+async function mapPreselect(brand, model) {
+  try {
+    if (!$('mapBrand').options.length || $('mapBrand').options.length <= 1) await renderMapHome();
+    $('mapBrand').value = brand;
+    await mapBrandChange();
+    if (model) { $('mapModel').value = model; mapFetch(); }
+  } catch (e) { showToast(e.message || '', false); }
+}

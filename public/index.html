@@ -14,6 +14,7 @@
 </nav>
 <div class="maincol">
 <div id="nextBar" hidden></div>
+<div id="workspace">
 <section class="toolbar" aria-label="ตัวกรอง"><select id="category" aria-label="หมวดหมู่"><option value="">ทุกหมวดหมู่</option></select><select id="brand" aria-label="ยี่ห้อรถ"><option value="">ทุกยี่ห้อรถ</option></select><select id="model" aria-label="รุ่นรถ"><option value="">ทุกรุ่นรถ</option></select><select id="statusFilter" aria-label="สถานะงาน" onchange="loadProducts()"><option value="">ทุกสถานะ</option><option value="NOT_STARTED">○ ยังไม่ทำ</option><option value="DOING">🔵 กำลังทำ</option><option value="DONE">✓ Generate แล้ว</option><option value="QC">◐ รอ QC/ต้องแก้</option><option value="PASSED">✓✓ QC ผ่าน/พร้อมลง</option><option value="PUBLISHED">🚀 ลงแล้ว</option><option value="ERROR">✕ มีปัญหา</option></select><button onclick="loadProducts()">ค้นหา</button></section>
 <div id="activityBar"><span class="dot"></span><span id="activityText">กำลังทำงาน...</span><span id="activitySecs"></span></div>
 <section id="dashstrip" aria-label="งานวันนี้"><div class="empty-state" style="padding:12px">กำลังโหลดงานวันนี้...</div></section>
@@ -25,6 +26,7 @@
 <section id="mapWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🗺 Vehicle Product Map</h2><span>ค้นดูสินค้าของ WDI ตามรุ่นรถ</span></div><div id="mapBody" style="padding:14px 16px"></div></div></section>
 <section id="distWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>📣 Distribution</h2><span id="distCtx"></span></div><div id="distBody" style="padding:14px 16px"></div></div></section>
 <section id="pubWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>📅 Publishing</h2><span id="pubCtx"></span></div><div id="pubBody" style="padding:14px 16px"></div></div></section>
+</div>
 </div>
 </div>
 <div id="pageBusy"><div class="busy-card"><div class="busy-spinner"></div><b id="busyTitle">กำลังทำงาน...</b><small id="busySecs">กรุณารอสักครู่ ระบบกำลังประมวลผล</small></div></div>
@@ -51,5 +53,5 @@
 <div class="drawer-head">🕘 ประวัติงาน<button class="hbtn" onclick="closeHistory()" aria-label="ปิด">✕</button></div>
 <div id="histBody" style="padding:12px 14px;overflow:auto"></div>
 </aside>
-<script src="app.js?v=20260911e"></script><script src="ad-features.js?v=20260911d"></script><script src="dist-studio.js?v=1"></script><script src="set-builder.js?v=1"></script><script src="vehicle-map.js?v=1"></script><script src="shell.js?v=1"></script><script src="shell.js?v=1"></script><script src="ui-enhance.js?v=20260911b"></script>
+<script src="app.js?v=20260911e"></script><script src="ad-features.js?v=20260911d"></script><script src="dist-studio.js?v=1"></script><script src="set-builder.js?v=1"></script><script src="vehicle-map.js?v=1"></script><script src="ui-enhance.js?v=20260911b"></script>
 </body></html>

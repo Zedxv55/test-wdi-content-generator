@@ -142,8 +142,8 @@ async function pubToggle(k){try{if(!window.lastJobId)return;const cur=document.q
 async function askAssistant(){const qi=$('assistantQ');const q=qi?.value||'';if(!q.trim())return;const a=$('assistantAns');if(a)a.textContent='กำลังถามฐานข้อมูล...';try{const d=await fetch('/api/assistant',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})}).then(r=>r.json());if(a)a.textContent=(d.answer||'(ไม่มีคำตอบ)')+((d.sources||[]).length?'\n\n— อ้างอิง: '+d.sources.join(', '):'');}catch(e){if(a)a.textContent='ถามไม่สำเร็จ: '+(e.message||'');}}
 const VICON={V01:'⭐',V02:'✨',V03:'🚗',V04:'↔️',V05:'🧩',V06:'🔄',V07:'🔍',V08:'📦',V09:'❓',V10:'⚖️',V11:'🧪',V12:'👯',V13:'📣',V14:'🎞️',V15:'🃏'};
 const DURS=[['15s','15 วิ'],['30s','30 วิ'],['45s','45 วิ']];
-function renderDur(){const el=$('durSeg');if(!el)return;el.innerHTML=`<div style="font-size:12px;opacity:.75;margin:8px 10px 4px">⏱ ความยาวคลิป:</div><div style="display:flex;gap:6px;padding:0 10px 10px">`+DURS.map(([v,l])=>`<button class="schip${selectedDur===v?' on':''}" style="flex:1" onclick="setDur('${v}')">${l}</button>`).join('')+`</div><div style="font-size:12px;opacity:.75;margin:2px 10px 4px">🎯 งาน:</div><div style="display:flex;gap:6px;padding:0 10px 10px"><button class="schip${selectedMode==='showcase'?' on':''}" style="flex:1" onclick="setMode('showcase')">โชว์สินค้า</button><button class="schip${selectedMode==='replacement'?' on':''}" style="flex:1" onclick="setMode('replacement')">เปลี่ยนชิ้นในฉาก</button></div><div style="font-size:12px;opacity:.75;margin:2px 10px 4px">🎬 Flow model:</div><div style="padding:0 10px 10px"><select id="flowModel" onchange="selectedFlowModel=this.value" style="width:100%;min-height:38px;background:#121720;color:#fff;border:1px solid #303744;border-radius:9px" aria-label="Flow model">${flowModelOpts()}</select></div>`}
-function setMode(m){selectedMode=(m==='replacement')?'replacement':'showcase';renderDur();}
+function renderDur(){const el=$('durSeg');if(!el)return;el.innerHTML=`<div style="font-size:12px;opacity:.75;margin:8px 10px 4px">⏱ ความยาวคลิป:</div><div style="display:flex;gap:6px;padding:0 10px 10px">`+DURS.map(([v,l])=>`<button class="schip${selectedDur===v?' on':''}" style="flex:1" onclick="setDur('${v}')">${l}</button>`).join('')+`</div><div style="font-size:12px;opacity:.75;margin:2px 10px 4px">🎯 งาน:</div><div style="display:flex;gap:6px;padding:0 10px 10px"><button class="schip${selectedMode==='showcase'?' on':''}" style="flex:1" onclick="setAiMode('showcase')">โชว์สินค้า</button><button class="schip${selectedMode==='replacement'?' on':''}" style="flex:1" onclick="setAiMode('replacement')">เปลี่ยนชิ้นในฉาก</button></div><div style="font-size:12px;opacity:.75;margin:2px 10px 4px">🎬 Flow model:</div><div style="padding:0 10px 10px"><select id="flowModel" onchange="selectedFlowModel=this.value" style="width:100%;min-height:38px;background:#121720;color:#fff;border:1px solid #303744;border-radius:9px" aria-label="Flow model">${flowModelOpts()}</select></div>`}
+function setAiMode(m){selectedMode=(m==='replacement')?'replacement':'showcase';renderDur();}
 let flowModels=null,selectedFlowModel='gemini-omni-flash';
 function flowModelOpts(){const ms=(flowModels&&flowModels.models)||{'gemini-omni-flash':{label:'Gemini Omni Flash 1.1',durations:[4,6,8,10]},'veo-3.1-fast':{label:'Veo 3.1 Fast',durations:[4,6,8]},'veo-3.1-quality':{label:'Veo 3.1 Quality',durations:[4,6,8]},'veo-3.1-lite':{label:'Veo 3.1 Lite',durations:[4,6,8]}};return Object.entries(ms).map(([k,v])=>`<option value="${k}"${k===selectedFlowModel?' selected':''}>${esc(v.label||k)} (${(v.durations||[]).join('/')}s)</option>`).join('')}
 async function loadFlowModels(){try{if(flowModels)return;flowModels=await fetch('/api/flow-models').then(r=>r.json());if(flowModels.defaultModel)selectedFlowModel=flowModels.defaultModel;renderDur();}catch{}}
@@ -238,3 +238,97 @@ function keyFactsHtml(p){try{const lis=[];const fit=p['Fitment Models']||p['Fitm
 const GEN_STEPS=['✓ อ่านข้อมูลสินค้า','✓ ตรวจ Product Truth','✓ เลือก Production Template','● กำลังสร้าง Content…','○ เตรียมผลลัพธ์'];
 function genSteps(){try{let i=0;clearInterval(window._gsT);window._gsT=setInterval(()=>{const o=document.querySelector('#output .loading');if(!o){clearInterval(window._gsT);return;}i=Math.min(i+1,GEN_STEPS.length-1);o.innerHTML='<span>'+GEN_STEPS.slice(0,i+1).join('<br>')+'</span>';},9000);}catch{}}
 async function generateMarketplace(){if(!current)return;const o=$('output');const d=buildLocalMarketplace(current);window.lastMarketplace=d;const names=[['hero','Hero 4:5'],['detail','Detail 1:1'],['context','Context 4:5'],['catalog','Catalog 4:5'],['social','Social 4:5']];const all=()=>names.map(([k,l])=>'### '+l+'\n'+(window.lastMarketplace.prompts?.[k]||'')).join('\n\n')+'\n\n### Negative Prompt\n'+(window.lastMarketplace.negative_prompt||'');const cards=names.map(([k,l])=>marketCard(k,l,d.prompts?.[k])).join('');o.innerHTML=`<section class="result"><div class="result-head"><div><h2>Marketplace Prompts · DIAMOND Pro</h2><small class="result-sub">Universal image prompt pack · WDI Fitment-aware · พร้อม Copy / Download / Share</small></div><button class="secondary" onclick="enhanceMarketplace(this)">AI Enhance</button></div><div class="prompt-toolbar"><button class="generate" onclick="copyText(window.lastMarketplace.prompts.hero,this)">Copy Hero</button><button class="secondary" onclick="copyText(window.lastMarketplace.prompts.context,this)">Copy Context</button><button class="secondary" onclick="copyText(window._marketplaceAll(),this)">Copy All</button><button class="secondary" onclick="downloadMarketplacePrompts()">Download .txt</button></div>${cards}<div class="box"><div class="box-title"><h3>Negative Prompt</h3><button onclick="copyText(window.lastMarketplace.negative_prompt,this)">Copy</button></div><div class="out">${esc(d.negative_prompt||'')}</div></div><div class="box"><div class="box-title"><h3>Source / Fitment Facts</h3><button onclick="copyText(window.lastMarketplace.source_facts||'',this)">Copy</button></div><div class="out">${esc(d.source_facts||'-')}</div></div></section>`;window._marketplaceAll=all;showToast('Marketplace Pro Prompt Pack พร้อมใช้ ✓');}
+// ---------- history drawer (moved from shell.js; no duplicates) ----------
+function addHistoryBtn() {
+  try {
+    const bar = document.querySelector('#detail .ph-actions');
+    if (!bar || bar.querySelector('[data-hist]')) return;
+    const b = document.createElement('button');
+    b.className = 'secondary'; b.dataset.hist = '1'; b.textContent = '🕘 ประวัติ';
+    b.onclick = openHistory;
+    bar.appendChild(b);
+  } catch {}
+}
+async function openHistory() {
+  const m = $('histDrawer'), b = $('histBody');
+  if (!m || !b) return;
+  m.classList.add('open');
+  const s = $('histScrim'); if (s) s.classList.add('on');
+  if (!window.current) { b.innerHTML = '<div class="empty-state">เลือกสินค้าก่อน</div>'; return; }
+  b.innerHTML = '<div class="loading">กำลังโหลดประวัติ...</div>';
+  try {
+    const d = await fetch('/api/job?code=' + encodeURIComponent(window.current['Product Code'] || '')).then(r => r.json());
+    if (!d.exists || !d.jobs.length) { b.innerHTML = '<div class="empty-state">สินค้านี้ยังไม่มีงาน</div>'; return; }
+    b.innerHTML = d.jobs.map(j => `<div class="box"><div class="box-title"><h3>${esc(j.v_code)} / ${esc(j.s_code || '-')}</h3><span>${esc(j.status)}</span></div>
+    <div style="font-size:12px">versions: ${j.versions} (current v${j.current_version}) · ${esc(j.updated_at || '').slice(0, 16).replace('T', ' ')}</div></div>`).join('')
+      + `<div class="box"><div class="box-title"><h3>Actions ล่าสุด</h3></div><div style="font-size:12px">${(d.actions || []).slice(0, 15).map(a => `<div>${esc((a.created_at || '').slice(5, 16).replace('T', ' '))} ${esc(a.action_type)}</div>`).join('')}</div></div>`;
+  } catch (e) { b.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; }
+}
+function closeHistory() {
+  const m = $('histDrawer'); if (m) m.classList.remove('open');
+  const s = $('histScrim'); if (s) s.classList.remove('on');
+}
+// ---------- global search + smart next (moved from shell.js; no duplicates) ----------
+let gSearchTimer = null;
+function initGlobalSearch() {
+  const inp = $('gSearch');
+  if (!inp || inp._bound) return;
+  inp._bound = true;
+  inp.addEventListener('input', () => {
+    clearTimeout(gSearchTimer);
+    gSearchTimer = setTimeout(globalSearch, 300);
+  });
+  inp.addEventListener('keydown', e => { if (e.key === 'Escape') $('gResults').hidden = true; });
+  document.addEventListener('click', e => {
+    if (!e.target.closest || (!e.target.closest('.gsearch') && !e.target.closest('#gResults'))) $('gResults').hidden = true;
+  });
+}
+async function globalSearch() {
+  const q = ($('gSearch').value || '').trim();
+  const box = $('gResults');
+  if (q.length < 2) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = '<div style="padding:8px;font-size:12px;opacity:.7">กำลังค้นหา...</div>';
+  try {
+    const [pd, sets, veh] = await Promise.all([
+      fetch('/api/products?q=' + encodeURIComponent(q) + '&limit=8').then(r => r.json()).catch(() => ({ products: [] })),
+      fetch('/api/sets').then(r => r.json()).catch(() => []),
+      fetch('/api/vehicle/search?q=' + encodeURIComponent(q)).then(r => r.json()).catch(() => ({ brands: [], models: [] }))
+    ]);
+    const plist = Array.isArray(pd) ? pd : (pd.products || []);
+    const ssl = (sets || []).filter(s => ((s.set_name || '') + ' ' + (s.vehicle_family || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 4);
+    let html = '';
+    html += '<div style="font-size:11px;opacity:.6;padding:4px 8px">Products</div>' + (plist.map(p => `<button onclick="gGoProduct('${esc(p['Product Code'] || '')}')">📦 ${esc(p['Product Code'] || '')} ${esc(p['Product Name (TH)'] || '')}</button>`).join('') || '<div style="font-size:12px;opacity:.6;padding:0 8px">—</div>');
+    html += '<div style="font-size:11px;opacity:.6;padding:4px 8px">Sets</div>' + (ssl.map(s => `<button onclick="gGoSet(${s.id})">🎬 ${esc(s.set_name || '')}</button>`).join('') || '<div style="font-size:12px;opacity:.6;padding:0 8px">—</div>');
+    html += '<div style="font-size:11px;opacity:.6;padding:4px 8px">Vehicles</div>' + (((veh.brands || []).map(b => `<button onclick="gGoVehicle('${esc(b.brand)}','')">🚙 ${esc(b.brand)}</button>`).join('') + (veh.models || []).map(m => `<button onclick="gGoVehicle('${esc(m.brand)}','${esc(m.model)}')">${esc(m.brand)} ${esc(m.model)}</button>`).join('')) || '<div style="font-size:12px;opacity:.6;padding:0 8px">—</div>');
+    box.innerHTML = html || '<div style="padding:8px;font-size:12px">ไม่พบ</div>';
+  } catch { box.hidden = true; }
+}
+async function gGoProduct(code) {
+  $('gResults').hidden = true; $('gSearch').value = '';
+  setMode('product');
+  $('search').value = code;
+  await loadProducts();
+  const btn = document.querySelector('#products .item:not(.load-more)');
+  if (btn && items.length) selectProduct(0, btn);
+}
+async function gGoSet(id) {
+  $('gResults').hidden = true; $('gSearch').value = '';
+  setMode('set');
+  setTimeout(() => openSet(id), 150);
+}
+async function gGoVehicle(brand, model) {
+  $('gResults').hidden = true; $('gSearch').value = '';
+  setMode('map');
+  setTimeout(() => mapPreselect(brand, model), 150);
+}
+async function loadNextBar() {
+  const el = $('nextBar');
+  if (!el) return;
+  try {
+    const n = await fetch('/api/next?limit=1').then(r => r.json());
+    if (!n.length) { el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = `<span>งานถัดไป: <b>${esc(n[0].product_code)}</b> ${esc(n[0].product_name_th || n[0].product_name_en || '')}</span><button class="secondary" onclick="startNext()">เปิดงาน</button>`;
+  } catch { el.hidden = true; }
+}

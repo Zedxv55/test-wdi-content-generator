@@ -223,3 +223,57 @@ function renderDistPublishing() {
     renderCalendar();
   } catch (e) { $('distCal').innerHTML = 'เปิด calendar ไม่สำเร็จ'; }
 }
+// ---------- workspace homes (moved from shell.js; no duplicates) ----------
+function renderDistHome() {
+  const ctx = $('distCtx');
+  if (window.current) {
+    if (ctx) ctx.textContent = window.current['Product Code'] || '';
+    if (typeof openDistStudio === 'function') openDistStudio();
+  } else {
+    if (ctx) ctx.textContent = '';
+    const el = $('distBody');
+    if (el) el.innerHTML = '<div class="empty-state">เลือกสินค้าใน Product mode ก่อน<br><small>แล้ว Distribution จะสร้าง content ให้สินค้านั้น</small></div>';
+  }
+}
+function renderPubHome() {
+  const el = $('pubBody');
+  if (!el) return;
+  el.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px" role="tablist">
+  <button class="secondary" onclick="pubTab('queue')" id="pubTQueue">Queue</button>
+  <button class="secondary" onclick="pubTab('cal')" id="pubTCal">Calendar</button>
+  <button class="secondary" onclick="pubTab('done')" id="pubTDone">Published</button></div><div id="pubTabBody"><div class="loading">กำลังโหลด...</div></div>`;
+  pubTab('queue');
+}
+async function pubTab(t) {
+  const el = $('pubTabBody');
+  if (!el) return;
+  if (t === 'cal') {
+    el.innerHTML = '<div id="adTabBody"></div>';
+    try { renderCalendar(); } catch (e) { el.innerHTML = 'เปิด calendar ไม่สำเร็จ'; }
+    el.innerHTML += `<div class="box" style="margin-top:10px"><div class="box-title"><h3>Automation (n8n)</h3></div><div style="font-size:12px">Webhook: <code>${esc(typeof n8nWebhookBase === 'function' ? n8nWebhookBase() : '')}</code></div></div>`;
+    return;
+  }
+  try {
+    const d = await fetch('/api/dashboard').then(r => r.json());
+    const acts = await fetch('/api/activity?limit=60').then(r => r.json()).catch(() => []);
+    if (t === 'done') {
+      const pubs = acts.filter(a => /^PUBLISHED_/.test(a.action_type || ''));
+      el.innerHTML = pubs.length
+        ? pubs.map(a => `<div style="font-size:12px;padding:6px 4px;border-bottom:1px solid #1c2430">🚀 ${esc(a.product_code || '')} ${esc(a.v_code || '')} · ${esc(a.action_type.replace('PUBLISHED_', ''))} <small style="opacity:.6">${esc((a.created_at || '').slice(0, 16).replace('T', ' '))}</small></div>`).join('')
+        : '<div class="empty-state">ยังไม่มีงานที่ publish</div>';
+      return;
+    }
+    const s = d.jobs_by_status || {};
+    const attn = d.attention || [];
+    el.innerHTML = `<div style="font-size:13px;margin-bottom:8px">พร้อมลง: <b>${(s.QC_PASSED || 0) + (s.READY_TO_PUBLISH || 0)}</b> · กำลังทำ: <b>${s.IN_PROGRESS || 0}</b> · ต้องดู: <b>${attn.length}</b></div>`
+      + (attn.map(a => `<div style="font-size:12px;padding:6px 4px;border-bottom:1px solid #1c2430">⚠ ${esc(a.product_code || '')} ${esc(a.v_code || '')} · ${esc(a.status || '')} <button class="secondary" style="font-size:11px;padding:2px 8px" onclick="pubOpenProduct('${esc(a.product_code || '')}')">เปิด</button></div>`).join('') || '<div class="empty-state">คิวว่าง</div>');
+  } catch (e) { el.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; }
+}
+async function pubOpenProduct(code) {
+  if (!code) return;
+  setMode('product');
+  $('search').value = code;
+  await loadProducts();
+  const btn = document.querySelector('#products .item:not(.load-more)');
+  if (btn && items.length) selectProduct(0, btn);
+}
