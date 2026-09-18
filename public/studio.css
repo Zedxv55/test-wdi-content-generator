@@ -151,6 +151,35 @@ body.nav-open #navScrim{display:block}
 .dist-fields{display:grid;gap:10px}
 .dist-side{display:grid;gap:10px}
 @media(min-width:1100px){.dist-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}}
+/* ===== STUDIO SHELL: rail + search + nextbar + history (one page) ===== */
+.shell{display:grid;grid-template-columns:80px minmax(0,1fr);gap:12px;align-items:start}
+.maincol{min-width:0}
+#rail{position:sticky;top:70px;display:flex;flex-direction:column;gap:6px;background:var(--st-panel,#10151d);border:1px solid #26303d;border-radius:14px;padding:8px 6px;z-index:5}
+#rail button{display:flex;flex-direction:column;align-items:center;gap:3px;background:transparent;border:1px solid transparent;border-radius:10px;color:var(--st-muted,#9aa5b5);font-size:10px;font-weight:700;padding:9px 2px;cursor:pointer;position:relative}
+#rail button .ri{font-size:19px}
+#rail button:hover{background:#161e29;color:#fff}
+#rail button.primary{color:var(--st-accent,#ffd76a);background:#1a2230}
+#rail button.primary::after{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:3px;border-radius:2px;background:currentColor}
+.gsearch{position:relative;flex:1;max-width:460px;min-width:160px}
+.gsearch input{width:100%;min-height:40px;padding:9px 12px;border:1px solid #303744;border-radius:10px;background:#121720;color:#fff}
+#gResults{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:70;background:#10161f;border:1px solid #344151;border-radius:12px;box-shadow:0 18px 50px #000a;max-height:50vh;overflow:auto;padding:6px}
+#gResults button{display:block;width:100%;text-align:left;background:transparent;border:0;color:#e9edf3;font-size:12px;padding:7px 9px;border-radius:8px;cursor:pointer}
+#gResults button:hover{background:#1a2230}
+#nextBar{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 14px;background:#111824;border:1px solid #2b3442;border-radius:12px;font-size:12.5px}
+#nextBar button{margin-left:auto}
+#histScrim{position:fixed;inset:0;background:#04060acc;z-index:96;display:none}
+#histScrim.on{display:block}
+#histDrawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,94vw);z-index:97;background:#0e141d;border-left:1px solid #2b3441;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .22s ease}
+#histDrawer.open{transform:none}
+#distWorkspace .panel,#pubWorkspace .panel,#setWorkspace .panel,#mapWorkspace .panel{margin-bottom:12px}
+@media(max-width:900px){
+.shell{grid-template-columns:1fr}
+#rail{position:fixed;left:0;right:0;bottom:0;top:auto;flex-direction:row;justify-content:space-around;border-radius:14px 14px 0 0;z-index:90;padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+#rail button{flex:1;padding:7px 2px}
+#rail button .rl{font-size:9px}
+main{padding-bottom:76px}
+.gsearch{max-width:none}
+}
 /* Vehicle Product Map */
 #mapWorkspace .panel{margin-bottom:12px}
 .map-vehicle{text-align:center}

@@ -743,6 +743,21 @@ app.get('/api/vehicle/image-prompt', async (q, s) => { try {
   lines.push('RULES: WDI images only; exact product identity per SKU; no invented products; no mirrored LH/RH; no invented compatibility; no invented parts; no fake vehicle; no fake logos; no fake text. Labels come ONLY from: ' + map.groups.flatMap(g => g.items.filter(i => i.matched).map(i => i.code)).filter(Boolean).slice(0, 12).join(', ') + '. Products without reference images: neutral gray placeholder box, never AI-invented.');
   s.json({ ok: true, prompt: lines.join('\n') });
 } catch (e) { s.status(502).json({ error: e.message }); } });
+// ---------- STUDIO SHELL helpers (read-only, additive) ----------
+app.get('/api/activity',(q,s)=>{try{
+ const lim=Math.max(1,Math.min(100,Number(q.query.limit)||20));
+ const acts=initDb().prepare(`SELECT a.id,a.action_type,a.action_data,a.created_by,a.created_at,p.product_code,j.v_code FROM production_actions a LEFT JOIN production_jobs j ON j.id=a.job_id LEFT JOIN products p ON p.id=j.product_id ORDER BY a.id DESC LIMIT ?`).all(lim);
+ s.json(acts);
+}catch(e){s.status(500).json({error:e.message});}});
+app.get('/api/vehicle/search',(q,s)=>{try{
+ const query=clean(q.query.q).toLowerCase();
+ if(!query)return s.json({brands:[],models:[]});
+ const c=readVCache();
+ const brands=(c.brands||[]).filter(b=>(b.brand||'').toLowerCase().includes(query)).slice(0,5);
+ const models=[];
+ for(const [b,ms] of Object.entries(c.models||{})){for(const m of (ms||[])){if((m.model||'').toLowerCase().includes(query))models.push({brand:b,model:m.model});if(models.length>=8)break;}if(models.length>=8)break;}
+ s.json({brands,models});
+}catch(e){s.status(500).json({error:e.message});}});
 if(!process.env.VERCEL)app.listen(PORT,()=>console.log(`WDI Content Generator: http://localhost:${PORT}`));
 export default app;
 

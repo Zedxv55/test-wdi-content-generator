@@ -21,7 +21,7 @@ function openDistStudio() {
 function distCatCode() { return (($('catCode') || {}).value || selectedCatCode || ''); }
 
 function renderDistStudio() {
-  const o = $('output'), st = window._dist;
+  const o = (typeof setModeCur !== 'undefined' && setModeCur === 'dist' && $('distBody')) ? $('distBody') : $('output'), st = window._dist;
   const p = current, sheet = window.lastSheet;
   const platTabs = Object.entries(DIST_PLATS).map(([k, v]) => {
     const dot = st.plan ? distPlatDot(k) : '○';

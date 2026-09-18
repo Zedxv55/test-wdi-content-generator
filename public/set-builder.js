@@ -2,48 +2,33 @@
 // Product workflow untouched. All set logic via /api/sets*.
 let setModeCur = 'product', curSetId = 0, curSet = null, setPlanVer = 0;
 
+const WS_TITLES = { product: 'Product Studio', set: 'Set Builder', map: 'Vehicle Product Map', dist: 'Content Distribution', pub: 'Publishing' };
 function setMode(m) {
   setModeCur = m;
-  const ws = document.querySelector('.workspace-main');
-  const sw = $('setWorkspace'), mw = $('mapWorkspace');
-  const mp = $('modeProduct'), ms = $('modeSet'), mm = $('modeMap'), md = $('modeDist'), mb = $('modePub');
-  if (mp) mp.classList.remove('primary');
-  if (ms) ms.classList.remove('primary');
-  if (mm) mm.classList.remove('primary');
-  if (md) md.classList.remove('primary');
-  if (mb) mb.classList.remove('primary');
-  if (ws) ws.style.display = (m === 'product') ? '' : 'none';
-  if (sw) sw.hidden = m !== 'set';
-  if (mw) mw.hidden = m !== 'map';
-  const wn = $('wsName');
-  if (m === 'set') {
-    if (ms) ms.classList.add('primary');
-    if (wn) wn.textContent = 'Set Builder';
-    renderSetHome();
-  } else if (m === 'map') {
-    if (mm) mm.classList.add('primary');
-    if (wn) wn.textContent = 'Vehicle Product Map';
-    if (typeof renderMapHome === 'function') renderMapHome();
-  } else {
-    if (mp) mp.classList.add('primary');
-    if (wn) wn.textContent = 'Product Studio';
+  const secs = { product: document.querySelector('.workspace-main'), set: $('setWorkspace'), map: $('mapWorkspace'), dist: $('distWorkspace'), pub: $('pubWorkspace') };
+  for (const [k, el] of Object.entries(secs)) {
+    if (!el) continue;
+    if (k === 'product') el.style.display = (m === 'product') ? '' : 'none';
+    else el.hidden = m !== k;
   }
+  document.querySelectorAll('#rail button').forEach(b => b.classList.toggle('primary', b.dataset.mode === m));
+  const prodUI = m === 'product';
+  const tb = document.querySelector('.toolbar'); if (tb) tb.style.display = prodUI ? '' : 'none';
+  const ds = $('dashstrip'); if (ds) ds.style.display = prodUI ? '' : 'none';
+  const wn = $('wsName'); if (wn) wn.textContent = WS_TITLES[m] || 'Product Studio';
+  if (m === 'set') renderSetHome();
+  else if (m === 'map') { if (typeof renderMapHome === 'function') renderMapHome(); }
+  else if (m === 'dist') { if (typeof renderDistHome === 'function') renderDistHome(); }
+  else if (m === 'pub') { if (typeof renderPubHome === 'function') renderPubHome(); }
 }
 function navDist() {
   if (!window.current) { showToast('เลือกสินค้าก่อน แล้วค่อยเปิด Distribution', false); setMode('product'); return; }
-  const md = $('modeDist'); if (md) md.classList.add('primary');
-  const wn = $('wsName'); if (wn) wn.textContent = 'Content Distribution';
-  setMode('product');
-  if (md) md.classList.add('primary');
+  setMode('dist');
   if (typeof openDistStudio === 'function') openDistStudio();
 }
 function navPub() {
-  if (!window.current) { showToast('เลือกสินค้าก่อน แล้วค่อยเปิด Publishing', false); setMode('product'); return; }
-  const mb = $('modePub'); if (mb) mb.classList.add('primary');
-  const wn = $('wsName'); if (wn) wn.textContent = 'Publishing';
-  setMode('product');
-  if (mb) mb.classList.add('primary');
-  if (typeof openDistStudio === 'function') { openDistStudio(); if (typeof distSwitchTab === 'function') distSwitchTab('publishing'); }
+  setMode('pub');
+  if (typeof openDistStudio === 'function') { /* publishing lives in pub workspace */ }
 }
 
 async function apiSet(url, method, body) {
