@@ -12,6 +12,9 @@ import { ensureSheet, sheetSummary, sheetPromptBlock } from './sheets.mjs';
 import { ANGLES, PLATFORMS, loadBusinessConfig, contactBlock, buildFacts, buildHashtags, buildKeywords, buildDistPrompt, qaContent, scoreContent } from './content-dist.mjs';
 import { saveContentVersion, getCurrentContent, getContentHistory, setContentStatus } from './db.mjs';
 import { planDurations, buildStoryboard, loadCapabilities, loadStoryboardRows } from './flow.mjs';
+import { autoGroupItems, buildSetPlan, buildScenePrompt, qcSetPlan, parseCampaignTSV, SET_ROLES } from './set-builder.mjs';
+import { collectBrands, collectModels, collectModelProducts, classifyVehicleImage, splitSide, guessGroup, compareFitment, b64name } from './vehicle-map.mjs';
+import { createSet, listSets, getSetDetail, addSetItems, updateSetItem, removeSetItem, setSetStatus, saveSetPlan, getSetPlan, upsertVehicleModel, linkVehicleProducts } from './db.mjs';
 
 dotenv.config();
 initDb();
@@ -470,6 +473,276 @@ app.post('/api/memory/import',async(q,s)=>{try{
  await new Promise((resolve,reject)=>{child.on('close',code=>code===0?resolve():reject(new Error(err||out||('import exit '+code))));child.on('error',reject)});
  s.json({ok:true,log:out.trim()});
 }catch(e){s.status(500).json({ok:false,error:e.message});}});
+// ---------- SET BUILDER API (campaign composition layer; product workflow untouched) ----------
+function setSheetMap(items) {
+  // {code: {sheet, ident}} — reuses existing sheets, ensures missing ones (no AI here)
+  const map = {};
+  for (const it of items) {
+    try {
+      const p = { 'Product Code': it.product_code, 'Product Name (TH)': it.product_name_th, 'Product Name (EN)': it.product_name_en, Category: it.category, 'Product URL': '', 'Main Image URL': it.main_image_url, 'Additional Images': '', 'Fitment Brands': '', 'Fitment Models': it.fitment_text || '', 'Fitment Contexts': '', 'Description (TH)': '', 'Description (EN)': '' };
+      const r = ensureSheet(it.product_code, '', p, null);
+      const sh = r.sheet;
+      let ident = `Sheet #${sh.id} v${sh.version_number} [${sh.status}]`;
+      try {
+        const idn = JSON.parse(sh.identity_json || '{}');
+        const comps = idn.components || {};
+        const vok = Object.entries(comps).filter(([, c]) => c && c.status === 'VERIFIED').map(([, c]) => `${c.label || ''}=${c.value || ''}`);
+        if (vok.length) ident += ' | ' + vok.slice(0, 6).join(' ; ');
+      } catch {}
+      map[it.product_code] = { sheet: sh, ident };
+    } catch (e) { map[it.product_code] = { sheet: null, ident: '[sheet error]' }; }
+  }
+  return map;
+}
+app.get('/api/sets', (q, s) => { try { s.json(listSets()); } catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/sets', (q, s) => { try {
+  s.json({ ok: true, set: createSet({ campaignId: q.body.campaignId || null, name: q.body.name, code: q.body.code || '', vehicle: q.body.vehicle || '', day: q.body.day || 0, days: q.body.days || 0, description: q.body.description || '' }) });
+} catch (e) { s.status(400).json({ error: e.message }); } });
+app.get('/api/sets/:id', (q, s) => { try {
+  const d = getSetDetail(Number(q.params.id) || 0);
+  if (!d) return s.status(404).json({ error: 'not found' });
+  d.sheets = {};
+  for (const it of d.items) {
+    try {
+      const prod = getProductRow(it.product_code);
+      const cur = prod ? getCurrentSheet(prod.id) : null;
+      d.sheets[it.product_code] = cur ? { version: cur.version_number, status: cur.status, confidence: cur.confidence } : null;
+    } catch { d.sheets[it.product_code] = null; }
+  }
+  s.json(d);
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/sets/:id/items', (q, s) => { try {
+  const codes = Array.isArray(q.body.codes) ? q.body.codes : String(q.body.codes || '').split(/[\n,;]+/);
+  s.json({ ok: true, added: addSetItems(Number(q.params.id) || 0, codes) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.patch('/api/set-items/:id', (q, s) => { try {
+  s.json({ ok: true, item: updateSetItem(Number(q.params.id) || 0, q.body || {}) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.delete('/api/set-items/:id', (q, s) => { try {
+  removeSetItem(Number(q.params.id) || 0); s.json({ ok: true });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/sets/:id/auto-group', (q, s) => { try {
+  const d = getSetDetail(Number(q.params.id) || 0);
+  if (!d) return s.status(404).json({ error: 'not found' });
+  const assigns = autoGroupItems(d.items);
+  for (const a of assigns) updateSetItem(a.itemId, { group_code: a.group_code, group_name: a.group_name, role: a.role });
+  s.json({ ok: true, assigned: assigns.length, detail: getSetDetail(d.set.id) });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/sets/:id/storyboard', async (q, s) => { try {
+  const d = getSetDetail(Number(q.params.id) || 0);
+  if (!d) return s.status(404).json({ error: 'not found' });
+  const totalSecs = Math.max(4, Math.min(120, Number(q.body.totalSecs) || 30));
+  const caps = loadCapabilities();
+  const model = caps.models[q.body.model] ? q.body.model : caps.defaultModel;
+  const plan = planDurations(totalSecs, model);
+  const sheets = setSheetMap(d.items);
+  const fullPlan = buildSetPlan({ set: d.set, items: d.items, sheets, totalSecs, modelKey: model });
+  fullPlan.plan = plan;
+  const prompts = {};
+  for (const sc of fullPlan.scenes) {
+    const blocks = {};
+    for (const c of sc.product_codes) blocks[c] = (sheets[c] && sheets[c].ident) || '[identity: use attached reference, no invention]';
+    const fit = {};
+    for (const c of sc.product_codes) {
+      const it = d.items.find(x => x.product_code === c);
+      if (it && it.fitment_text) fit[c] = it.fitment_text;
+    }
+    prompts[sc.id] = buildScenePrompt({ set: d.set, scene: sc, sheetBlocks: blocks, fitments: fit });
+  }
+  const qc = qcSetPlan({ set: d.set, items: d.items, plan: fullPlan, prompts });
+  const saved = saveSetPlan(d.set.id, { plan: fullPlan, prompts }, clean(q.body.note) || 'storyboard', clean(q.body.by) || 'web');
+  try { logAction(null, 'SET_STORYBOARD', { set: d.set.id, version: saved.version, scenes: fullPlan.scenes.length }, clean(q.body.by) || 'web'); } catch {}
+  s.json({ ok: true, version: saved.version, plan: fullPlan, prompts, qc });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/sets/:id/regenerate-scene', async (q, s) => { try {
+  const setId = Number(q.params.id) || 0;
+  const sceneId = String(q.body.scene_id || '').toUpperCase();
+  const cur = getSetPlan(setId);
+  if (!cur) return s.status(404).json({ error: 'no plan yet' });
+  const data = JSON.parse(cur.plan_json || '{}');
+  const sc = (data.plan?.scenes || []).find(x => x.id === sceneId);
+  if (!sc) return s.status(404).json({ error: 'scene not found' });
+  const oldPrompt = (data.prompts || {})[sceneId] || '';
+  const hasOR = Boolean(process.env.OPENROUTER_API_KEY);
+  if (!hasOR) return s.status(503).json({ error: 'ยังไม่ได้ตั้งค่า API Key ใน .env' });
+  const ai = new OpenAI({ apiKey: process.env.OPENROUTER_API_KEY, baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', defaultHeaders: { 'HTTP-Referer': 'http://localhost:3077', 'X-Title': 'WDI Content Generator' } });
+  const r = await ai.chat.completions.create({ model: process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', messages: [{ role: 'user', content: `Rewrite this ONE Google Flow scene prompt. Keep: same products with own identities, same duration ${sc.duration}, same references, same continuity. Improve camera/action clarity. HARD RULES: never merge SKUs, never mirror LH to fake RH, never move fitment across products, no invented specs/prices/compatibility/text/logos. Output ONLY the rewritten scene prompt text.\n\nSCENE: ${sc.id} ${sc.title} (${sc.duration})\nPRODUCTS: ${(sc.product_codes || []).join(', ')}\n\nCURRENT PROMPT:\n${String(oldPrompt).slice(0, 3000)}` }], temperature: 0.3, max_tokens: 3000 });
+  const msg = r.choices?.[0]?.message || {};
+  let text = typeof msg.content === 'string' ? msg.content.trim() : '';
+  if (!text && Array.isArray(msg.content)) text = msg.content.map(x => typeof x === 'string' ? x : (x?.text || '')).join('').trim();
+  if (!text && msg.reasoning) text = String(msg.reasoning).trim();
+  text = text.replace(/^```(?:\w+)?\s*/, '').replace(/\s*```$/, '').trim();
+  if (!text) return s.status(502).json({ error: 'AI ตอบว่าง — ลองใหม่' });
+  data.prompts = { ...(data.prompts || {}), [sceneId]: text };
+  const saved = saveSetPlan(setId, data, `regen ${sceneId}`, clean(q.body.by) || 'web');
+  try { logAction(null, 'SET_SCENE_REGEN', { set: setId, scene: sceneId, version: saved.version }, clean(q.body.by) || 'web'); } catch {}
+  s.json({ ok: true, version: saved.version, scene_id: sceneId, prompt: text });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.get('/api/sets/:id/plan', (q, s) => { try {
+  const p = getSetPlan(Number(q.params.id) || 0, q.query.version ? Number(q.query.version) : 0);
+  if (!p) return s.status(404).json({ error: 'no plan' });
+  s.json({ ...p, plan_json: JSON.parse(p.plan_json || '{}') });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/sets/import', (q, s) => { try {
+  const rows = parseCampaignTSV(q.body.text || '');
+  if (!rows.length) return s.status(400).json({ error: 'no rows parsed' });
+  const groups = new Map();
+  for (const r of rows) {
+    const key = `${r.set_no}||${r.vehicle}`;
+    if (!groups.has(key)) groups.set(key, { set_no: r.set_no, vehicle: r.vehicle, codes: [] });
+    if (r.code) groups.get(key).codes.push(r.code);
+  }
+  const created = [];
+  for (const g of groups.values()) {
+    const set = createSet({ name: `SET ${g.set_no} ${g.vehicle}`.trim(), code: String(g.set_no), vehicle: g.vehicle });
+    const added = addSetItems(set.id, [...new Set(g.codes)]);
+    created.push({ set_id: set.id, name: set.set_name, added });
+  }
+  s.json({ ok: true, sets: created });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+// ---------- VEHICLE PRODUCT MAP API (WDI-sourced discovery; product/set flows untouched) ----------
+const VMAP_CACHE = path.join(ROOT, 'data', 'vehicle-map-cache.json');
+function readVCache() { try { return JSON.parse(fs.readFileSync(VMAP_CACHE, 'utf8')); } catch { return { brands: [], models: {}, fetched_at: {} }; } }
+function writeVCache(c) { try { fs.writeFileSync(VMAP_CACHE, JSON.stringify(c, null, 2)); } catch {} }
+function normWdiUrl(u) {
+  try { return decodeURIComponent(String(u || '')).replace(/%3D/gi, '=').trim(); }
+  catch { return String(u || '').trim(); }
+}
+app.get('/api/vehicle/brands', async (q, s) => { try {
+  const c = readVCache();
+  if (!q.query.refresh && c.brands && c.brands.length) return s.json({ brands: c.brands, cached: true, fetched_at: c.fetched_at.brands || '' });
+  const brands = await collectBrands();
+  c.brands = brands; c.fetched_at = { ...(c.fetched_at || {}), brands: new Date().toISOString() };
+  writeVCache(c);
+  s.json({ brands, cached: false });
+} catch (e) { s.status(502).json({ error: 'WDI fetch failed: ' + e.message }); } });
+app.get('/api/vehicle/models', async (q, s) => { try {
+  const brand = clean(q.query.brand).toUpperCase();
+  if (!brand) return s.status(400).json({ error: 'brand required' });
+  const c = readVCache();
+  if (!q.query.refresh && c.models && c.models[brand] && c.models[brand].length) {
+    return s.json({ brand, models: c.models[brand], cached: true });
+  }
+  if (!c.brands || !c.brands.length) { c.brands = await collectBrands(); }
+  const b = c.brands.find(x => x.brand === brand);
+  if (!b) return s.status(404).json({ error: 'brand not on WDI' });
+  const models = await collectModels(b.url);
+  c.models = c.models || {}; c.models[brand] = models;
+  c.fetched_at = { ...(c.fetched_at || {}), ['models_' + brand]: new Date().toISOString() };
+  writeVCache(c);
+  s.json({ brand, models, cached: false });
+} catch (e) { s.status(502).json({ error: 'WDI fetch failed: ' + e.message }); } });
+async function buildVehicleMap(brand, model, modelUrl, modelImg) {
+  const wdiProducts = await collectModelProducts(modelUrl);
+  const d = initDb();
+  const local = d.prepare('SELECT * FROM products WHERE product_code IS NOT NULL AND product_code<>?').all('');
+  const byUrl = new Map(local.map(p => [normWdiUrl(p.product_url), p]));
+  const items = [];
+  const linkedIds = [];
+  for (const w of wdiProducts) {
+    const hit = byUrl.get(normWdiUrl(w.url));
+    if (hit) {
+      items.push({ matched: true, code: hit.product_code, name_th: hit.product_name_th, name_en: hit.product_name_en || w.name, category: hit.category, sub: hit.sub_category, url: hit.product_url, img: hit.main_image_url || w.image_url, wdi_img: w.image_url, fitment_text: hit.fitment_text, product_id: hit.id });
+      linkedIds.push(hit.id);
+    } else {
+      items.push({ matched: false, code: '', name_th: '', name_en: w.name, category: '', sub: '', url: w.url, img: w.image_url, wdi_img: w.image_url, fitment_text: '', product_id: 0 });
+    }
+  }
+  const vimg = classifyVehicleImage(modelImg, brand, model);
+  const ym = clean(model).match(/(\d{4}.*)$/);
+  const vm = upsertVehicleModel({ brand, model, year_range: ym ? ym[1] : '', name: `${brand} ${model}`, url: modelUrl, image_url: modelImg || '', image_status: vimg.status });
+  if (linkedIds.length) linkVehicleProducts(vm.id, [...new Set(linkedIds)]);
+  // group (display only) + sheet status + fitment compare
+  const groups = new Map();
+  for (const it of items) {
+    const g = guessGroup(it.name_th || it.name_en, it.category);
+    if (!groups.has(g)) groups.set(g, []);
+    let sheet = null;
+    if (it.product_id) {
+      try {
+        const cur = getCurrentSheet(it.product_id);
+        sheet = cur ? { version: cur.version_number, status: cur.status, confidence: cur.confidence } : null;
+      } catch {}
+    }
+    groups.get(g).push({ ...it, side: splitSide(it.code, it.name_th || it.name_en), sheet, fit: compareFitment(it.fitment_text, brand, model) });
+  }
+  return {
+    vehicle: { brand, model, year_range: ym ? ym[1] : '', name: `${brand} ${model}`, url: modelUrl, image: modelImg || '', image_status: vimg.status, image_reason: vimg.reason },
+    total_wdi: wdiProducts.length, matched: items.filter(i => i.matched).length,
+    groups: [...groups.entries()].map(([name, list]) => ({ name, count: list.length, items: list })),
+    source: 'wdi', checked_at: vm.source_checked_at
+  };
+}
+app.get('/api/vehicle/map', async (q, s) => { try {
+  const brand = clean(q.query.brand).toUpperCase();
+  const model = clean(q.query.model);
+  if (!brand || !model) return s.status(400).json({ error: 'brand+model required' });
+  const c = readVCache();
+  let entry = (c.models && c.models[brand] || []).find(m => m.model === model);
+  if (!entry || q.query.refresh) {
+    if (!c.brands || !c.brands.length) c.brands = await collectBrands();
+    const b = c.brands.find(x => x.brand === brand);
+    if (!b) return s.status(404).json({ error: 'brand not on WDI' });
+    const models = await collectModels(b.url);
+    c.models = c.models || {}; c.models[brand] = models; writeVCache(c);
+    entry = models.find(m => m.model === model);
+    if (!entry) return s.status(404).json({ error: 'model not on WDI' });
+  }
+  const map = await buildVehicleMap(brand, model, entry.url, entry.image_url);
+  c.last_map = { brand, model, at: new Date().toISOString(), total: map.total_wdi, matched: map.matched };
+  writeVCache(c);
+  s.json(map);
+} catch (e) { s.status(502).json({ error: 'WDI fetch failed: ' + e.message }); } });
+app.get('/api/vehicle/export', async (q, s) => { try {
+  const brand = clean(q.query.brand).toUpperCase();
+  const model = clean(q.query.model);
+  if (!brand || !model) return s.status(400).json({ error: 'brand+model required' });
+  const c = readVCache();
+  const entry = (c.models && c.models[brand] || []).find(m => m.model === model);
+  if (!entry) return s.status(404).json({ error: 'open the map first' });
+  const map = await buildVehicleMap(brand, model, entry.url, entry.image_url);
+  const head = ['BRAND', 'MODEL', 'MODEL_YEAR', 'VEHICLE_NAME', 'VEHICLE_URL', 'VEHICLE_IMAGE_URL', 'PRODUCT_CODE', 'PRODUCT_NAME_TH', 'PRODUCT_NAME_EN', 'PRODUCT_URL', 'PRODUCT_IMAGE_URL', 'PRODUCT_CATEGORY', 'SUB_CATEGORY', 'FITMENT_TEXT', 'FITMENT_STATUS', 'GROUP_NAME', 'GROUP_CODE', 'SIDE', 'PRODUCT_SHEET_ID', 'PRODUCT_SHEET_VERSION', 'SOURCE', 'SOURCE_LAST_CHECKED'];
+  const rows = [head];
+  const d = initDb();
+  for (const g of map.groups) {
+    for (const it of g.items) {
+      let sid = '', sver = '';
+      if (it.product_id) {
+        try { const cur = getCurrentSheet(it.product_id); if (cur) { sid = cur.id; sver = cur.version_number; } } catch {}
+      }
+      rows.push([brand, model, map.vehicle.year_range, map.vehicle.name, map.vehicle.url, map.vehicle.image,
+        it.code, it.name_th, it.name_en, it.url, it.img, it.category, it.sub, it.fitment_text, it.fit.status,
+        g.name, '', it.side, sid, sver, 'wdi', map.checked_at]);
+    }
+  }
+  const wb = XLSX.utils.book_new();
+  wb.SheetNames.push('Vehicle Product Map');
+  wb.Sheets['Vehicle Product Map'] = XLSX.utils.aoa_to_sheet(rows);
+  const groups = [['GROUP_CODE', 'GROUP_NAME', 'GROUP_ORDER', 'DESCRIPTION', 'PRODUCT_CATEGORY', 'SIDE_RULE', 'DISPLAY_MODE']];
+  map.groups.forEach((g, i) => groups.push(['G' + (i + 1), g.name, i + 1, g.count + ' items', '', 'LH/RH/Pair split', g.count > 50 ? 'collapsed' : 'open']));
+  wb.SheetNames.push('Vehicle Map Groups');
+  wb.Sheets['Vehicle Map Groups'] = XLSX.utils.aoa_to_sheet(groups);
+  const fn = `Vehicle-Map_${brand}_${model.replace(/[^\w\-]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const fp = path.join(ROOT, 'data', fn);
+  XLSX.writeFile(wb, fp);
+  s.download(fp, fn);
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.get('/api/vehicle/image-prompt', async (q, s) => { try {
+  const brand = clean(q.query.brand).toUpperCase();
+  const model = clean(q.query.model);
+  if (!brand || !model) return s.status(400).json({ error: 'brand+model required' });
+  const c = readVCache();
+  const entry = (c.models && c.models[brand] || []).find(m => m.model === model);
+  if (!entry) return s.status(404).json({ error: 'open the map first' });
+  const map = await buildVehicleMap(brand, model, entry.url, entry.image_url);
+  const lines = [`VEHICLE PRODUCT MAP SUMMARY IMAGE for ${brand} ${model}. CENTER: exact WDI vehicle reference${map.vehicle.image ? ' (attached)' : ' (no verified vehicle image — use neutral placeholder shape, NOT an invented car)'}.`];
+  for (const g of map.groups) {
+    const codes = g.items.filter(i => i.matched).map(i => i.code).filter(Boolean).slice(0, 8);
+    lines.push(`AROUND-CENTER branch "${g.name}" (${g.count} products${codes.length ? ': ' + codes.join(', ') : ''}): use exact WDI product reference images only.`);
+  }
+  lines.push('RULES: WDI images only; exact product identity per SKU; no invented products; no mirrored LH/RH; no invented compatibility; no invented parts; no fake vehicle; no fake logos; no fake text. Labels come ONLY from: ' + map.groups.flatMap(g => g.items.filter(i => i.matched).map(i => i.code)).filter(Boolean).slice(0, 12).join(', ') + '. Products without reference images: neutral gray placeholder box, never AI-invented.');
+  s.json({ ok: true, prompt: lines.join('\n') });
+} catch (e) { s.status(502).json({ error: e.message }); } });
 if(!process.env.VERCEL)app.listen(PORT,()=>console.log(`WDI Content Generator: http://localhost:${PORT}`));
 export default app;
 

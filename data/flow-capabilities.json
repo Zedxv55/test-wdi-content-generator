@@ -1,0 +1,38 @@
+{
+  "models": {
+    "gemini-omni-flash": {
+      "label": "Gemini Omni Flash 1.1",
+      "durations": [4, 6, 8, 10],
+      "supportsReferences": true,
+      "supportsFirstLastFrame": true,
+      "notes": "Ingredients/references supported; segment length varies by sub-model"
+    },
+    "veo-3.1-lite": {
+      "label": "Veo 3.1 Lite",
+      "durations": [4, 6, 8],
+      "supportsReferences": "model-dependent",
+      "supportsFirstLastFrame": false,
+      "notes": "Reference support depends on endpoint"
+    },
+    "veo-3.1-fast": {
+      "label": "Veo 3.1 Fast",
+      "durations": [4, 6, 8],
+      "supportsReferences": "model-dependent",
+      "supportsFirstLastFrame": false,
+      "notes": ""
+    },
+    "veo-3.1-quality": {
+      "label": "Veo 3.1 Quality",
+      "durations": [4, 6, 8],
+      "supportsReferences": "model-dependent",
+      "supportsFirstLastFrame": false,
+      "notes": "Highest quality, slower"
+    }
+  },
+  "defaultModel": "gemini-omni-flash",
+  "strategy": {
+    "prefer": "longest-first",
+    "minimizeGenerations": true,
+    "note": "Exact total preferred; otherwise nearest reachable total at or below requested, remainder reported"
+  }
+}

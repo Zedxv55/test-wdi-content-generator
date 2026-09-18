@@ -151,6 +151,13 @@ body.nav-open #navScrim{display:block}
 .dist-fields{display:grid;gap:10px}
 .dist-side{display:grid;gap:10px}
 @media(min-width:1100px){.dist-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}}
+/* Vehicle Product Map */
+#mapWorkspace .panel{margin-bottom:12px}
+.map-vehicle{text-align:center}
+#mapCanvas{touch-action:pan-x pan-y}
+/* Set Builder workspace */
+#setWorkspace .panel{margin-bottom:12px}
+#modeProduct.primary,#modeSet.primary{background:var(--st-accent);border-color:var(--st-accent);color:#141414}
 /* Phase E: declutter — kill duplicates, tighten */
 #selSeries{display:none}
 #statusFilter{display:none}

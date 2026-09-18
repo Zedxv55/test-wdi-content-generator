@@ -175,6 +175,70 @@ CREATE TABLE IF NOT EXISTS platform_content(
   is_current INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_pcontent_lookup ON platform_content(product_id,platform,content_angle);
+CREATE TABLE IF NOT EXISTS campaign_sets(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER DEFAULT NULL REFERENCES campaigns(id),
+  set_name TEXT NOT NULL,
+  set_code TEXT DEFAULT '',
+  vehicle_family TEXT DEFAULT '',
+  campaign_day INTEGER DEFAULT 0,
+  planned_days INTEGER DEFAULT 0,
+  description TEXT DEFAULT '',
+  status TEXT DEFAULT 'DRAFT',
+  created_at TEXT DEFAULT '',
+  updated_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS campaign_set_items(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  set_id INTEGER NOT NULL REFERENCES campaign_sets(id),
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  sort_order INTEGER DEFAULT 0,
+  group_code TEXT DEFAULT '',
+  group_name TEXT DEFAULT '',
+  role TEXT DEFAULT 'SECONDARY',
+  status TEXT DEFAULT 'ACTIVE',
+  created_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS set_plans(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  set_id INTEGER NOT NULL REFERENCES campaign_sets(id),
+  version INTEGER NOT NULL,
+  plan_json TEXT DEFAULT '',
+  note TEXT DEFAULT '',
+  created_by TEXT DEFAULT 'web',
+  created_at TEXT DEFAULT '',
+  is_current INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_set_items ON campaign_set_items(set_id);
+CREATE INDEX IF NOT EXISTS idx_set_plans ON set_plans(set_id);
+CREATE TABLE IF NOT EXISTS vehicle_models(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand TEXT NOT NULL,
+  model TEXT NOT NULL,
+  year_range TEXT DEFAULT '',
+  vehicle_name TEXT DEFAULT '',
+  vehicle_url TEXT DEFAULT '',
+  vehicle_image_url TEXT DEFAULT '',
+  image_status TEXT DEFAULT 'OTHER',
+  source TEXT DEFAULT 'wdi',
+  source_checked_at TEXT DEFAULT '',
+  UNIQUE(brand, model)
+);
+CREATE TABLE IF NOT EXISTS vehicle_product_map(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_model_id INTEGER NOT NULL REFERENCES vehicle_models(id),
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  source TEXT DEFAULT 'wdi',
+  source_checked_at TEXT DEFAULT '',
+  UNIQUE(vehicle_model_id, product_id)
+);
+CREATE TABLE IF NOT EXISTS vehicle_map_versions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_model_id INTEGER NOT NULL REFERENCES vehicle_models(id),
+  version INTEGER NOT NULL,
+  stats_json TEXT DEFAULT '',
+  created_at TEXT DEFAULT ''
+);
 `;
 
 export function now() { return new Date().toISOString(); }
@@ -579,6 +643,128 @@ export function setContentStatus(id, status) {
   const d = initDb();
   d.prepare('UPDATE platform_content SET status=?, updated_at=? WHERE id=?').run(status, now(), id);
   return d.prepare('SELECT * FROM platform_content WHERE id=?').get(id);
+}
+
+// ---------- CAMPAIGN SETS (group layer above products; never merges SKUs) ----------
+const SET_ROLES = ['PRIMARY', 'PAIR_LH', 'PAIR_RH', 'OPTION', 'SECONDARY'];
+export function createSet({ campaignId = null, name, code = '', vehicle = '', day = 0, days = 0, description = '' }) {
+  const d = initDb();
+  if (!String(name || '').trim()) throw new Error('set_name required');
+  const ts = now();
+  const r = d.prepare(`INSERT INTO campaign_sets (campaign_id,set_name,set_code,vehicle_family,campaign_day,planned_days,description,status,created_at,updated_at)
+    VALUES (?,?,?,?,?, ?,?,'DRAFT',?,?)`).run(campaignId, String(name).trim(), code, vehicle, day, days, description, ts, ts);
+  return d.prepare('SELECT * FROM campaign_sets WHERE id=?').get(r.lastInsertRowid);
+}
+export function listSets() {
+  return initDb().prepare(`SELECT s.*, COUNT(i.id) AS items FROM campaign_sets s
+    LEFT JOIN campaign_set_items i ON i.set_id=s.id GROUP BY s.id ORDER BY s.id DESC`).all();
+}
+export function getSetDetail(setId) {
+  const d = initDb();
+  const set = d.prepare('SELECT * FROM campaign_sets WHERE id=?').get(setId);
+  if (!set) return null;
+  const items = d.prepare(`SELECT i.*, p.product_code, p.product_name_th, p.product_name_en, p.category, p.main_image_url, p.fitment_text
+    FROM campaign_set_items i JOIN products p ON p.id=i.product_id WHERE i.set_id=? ORDER BY i.sort_order, i.id`).all(setId);
+  const plans = d.prepare('SELECT id,version,note,created_by,created_at,is_current FROM set_plans WHERE set_id=? ORDER BY version').all(setId);
+  return { set, items, plans };
+}
+export function addSetItems(setId, codes) {
+  const d = initDb();
+  const max = d.prepare('SELECT COALESCE(MAX(sort_order),-1) AS m FROM campaign_set_items WHERE set_id=?').get(setId).m;
+  let n = 0;
+  const tx = (fn) => { d.exec('BEGIN'); try { fn(); d.exec('COMMIT'); } catch (e) { try { d.exec('ROLLBACK'); } catch {} throw e; } };
+  tx(() => {
+    codes.forEach((code, idx) => {
+      code = String(code || '').trim();
+      if (!code) return;
+      let prod = d.prepare('SELECT * FROM products WHERE product_code=?').get(code);
+      if (!prod) {
+        const r = d.prepare('INSERT INTO products (product_code,synced_at) VALUES (?,?)').run(code, now());
+        prod = { id: Number(r.lastInsertRowid), product_code: code };
+      }
+      const dup = d.prepare('SELECT id FROM campaign_set_items WHERE set_id=? AND product_id=?').get(setId, prod.id);
+      if (dup) return;
+      d.prepare(`INSERT INTO campaign_set_items (set_id,product_id,sort_order,group_code,group_name,role,status,created_at)
+        VALUES (?,?,?,?, '','SECONDARY','ACTIVE',?)`).run(setId, prod.id, max + 1 + idx, '', now());
+      n++;
+    });
+  });
+  touchSet(setId);
+  return n;
+}
+export function updateSetItem(itemId, patch) {
+  const d = initDb();
+  const sets = [], vals = [];
+  for (const k of ['sort_order', 'group_code', 'group_name', 'role', 'status']) {
+    if (patch[k] !== undefined) {
+      if (k === 'role' && !SET_ROLES.includes(patch[k])) continue;
+      sets.push(`${k}=?`); vals.push(patch[k]);
+    }
+  }
+  if (!sets.length) return null;
+  vals.push(itemId);
+  d.prepare(`UPDATE campaign_set_items SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  const row = d.prepare('SELECT set_id FROM campaign_set_items WHERE id=?').get(itemId);
+  if (row) touchSet(row.set_id);
+  return d.prepare('SELECT * FROM campaign_set_items WHERE id=?').get(itemId);
+}
+export function removeSetItem(itemId) {
+  const d = initDb();
+  const row = d.prepare('SELECT set_id FROM campaign_set_items WHERE id=?').get(itemId);
+  d.prepare('DELETE FROM campaign_set_items WHERE id=?').run(itemId);
+  if (row) touchSet(row.set_id);
+  return true;
+}
+export function touchSet(setId) {
+  initDb().prepare('UPDATE campaign_sets SET updated_at=? WHERE id=?').run(now(), setId);
+}
+export function setSetStatus(setId, status) {
+  const d = initDb();
+  d.prepare('UPDATE campaign_sets SET status=?, updated_at=? WHERE id=?').run(status, now(), setId);
+  return d.prepare('SELECT * FROM campaign_sets WHERE id=?').get(setId);
+}
+export function saveSetPlan(setId, plan, note = '', by = 'web') {
+  const d = initDb();
+  const cur = d.prepare('SELECT COALESCE(MAX(version),0) AS m FROM set_plans WHERE set_id=?').get(setId).m;
+  const n = cur + 1;
+  d.prepare('UPDATE set_plans SET is_current=0 WHERE set_id=?').run(setId);
+  const r = d.prepare(`INSERT INTO set_plans (set_id,version,plan_json,note,created_by,created_at,is_current)
+    VALUES (?,?,?,?,?,?,1)`).run(setId, n, JSON.stringify(plan || {}), note, by, now());
+  touchSet(setId);
+  return { id: Number(r.lastInsertRowid), version: n };
+}
+export function getSetPlan(setId, version) {
+  const d = initDb();
+  if (version) return d.prepare('SELECT * FROM set_plans WHERE set_id=? AND version=?').get(setId, version) || null;
+  return d.prepare('SELECT * FROM set_plans WHERE set_id=? AND is_current=1').get(setId) || null;
+}
+// ---------- VEHICLE MAP (WDI-sourced; references products, never copies truth) ----------
+export function upsertVehicleModel({ brand, model, year_range = '', name = '', url = '', image_url = '', image_status = 'OTHER' }) {
+  const d = initDb();
+  const ts = now();
+  d.prepare(`INSERT INTO vehicle_models (brand,model,year_range,vehicle_name,vehicle_url,vehicle_image_url,image_status,source,source_checked_at)
+    VALUES (?,?,?,?,?,?,?, 'wdi',?) ON CONFLICT(brand,model) DO UPDATE SET
+    year_range=excluded.year_range, vehicle_name=excluded.vehicle_name, vehicle_url=excluded.vehicle_url,
+    vehicle_image_url=excluded.vehicle_image_url, image_status=excluded.image_status, source_checked_at=excluded.source_checked_at`)
+    .run(brand, model, year_range, name, url, image_url, image_status, ts);
+  return d.prepare('SELECT * FROM vehicle_models WHERE brand=? AND model=?').get(brand, model);
+}
+
+export function linkVehicleProducts(vehicleId, productIds) {
+  const d = initDb();
+  const ts = now();
+  let n = 0;
+  const tx = (fn) => { d.exec('BEGIN'); try { fn(); d.exec('COMMIT'); } catch (e) { try { d.exec('ROLLBACK'); } catch {} throw e; } };
+  tx(() => {
+    for (const pid of productIds) {
+      try { d.prepare(`INSERT INTO vehicle_product_map (vehicle_model_id,product_id,source,source_checked_at) VALUES (?,?,'wdi',?)`).run(vehicleId, pid, ts); n++; }
+      catch {}
+    }
+  });
+  const cur = d.prepare('SELECT COALESCE(MAX(version),0) AS m FROM vehicle_map_versions WHERE vehicle_model_id=?').get(vehicleId).m;
+  d.prepare('INSERT INTO vehicle_map_versions (vehicle_model_id,version,stats_json,created_at) VALUES (?,?,?,?)')
+    .run(vehicleId, cur + 1, JSON.stringify({ products: n, at: ts }), ts);
+  return { linked: n, version: cur + 1 };
 }
 
 export function dbFile() { return memoryMode ? ':memory:' : DB_FILE; }
