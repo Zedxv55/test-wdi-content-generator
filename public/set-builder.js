@@ -6,22 +6,44 @@ function setMode(m) {
   setModeCur = m;
   const ws = document.querySelector('.workspace-main');
   const sw = $('setWorkspace'), mw = $('mapWorkspace');
-  const mp = $('modeProduct'), ms = $('modeSet'), mm = $('modeMap');
+  const mp = $('modeProduct'), ms = $('modeSet'), mm = $('modeMap'), md = $('modeDist'), mb = $('modePub');
   if (mp) mp.classList.remove('primary');
   if (ms) ms.classList.remove('primary');
   if (mm) mm.classList.remove('primary');
+  if (md) md.classList.remove('primary');
+  if (mb) mb.classList.remove('primary');
   if (ws) ws.style.display = (m === 'product') ? '' : 'none';
   if (sw) sw.hidden = m !== 'set';
   if (mw) mw.hidden = m !== 'map';
+  const wn = $('wsName');
   if (m === 'set') {
     if (ms) ms.classList.add('primary');
+    if (wn) wn.textContent = 'Set Builder';
     renderSetHome();
   } else if (m === 'map') {
     if (mm) mm.classList.add('primary');
+    if (wn) wn.textContent = 'Vehicle Product Map';
     if (typeof renderMapHome === 'function') renderMapHome();
   } else {
     if (mp) mp.classList.add('primary');
+    if (wn) wn.textContent = 'Product Studio';
   }
+}
+function navDist() {
+  if (!window.current) { showToast('เลือกสินค้าก่อน แล้วค่อยเปิด Distribution', false); setMode('product'); return; }
+  const md = $('modeDist'); if (md) md.classList.add('primary');
+  const wn = $('wsName'); if (wn) wn.textContent = 'Content Distribution';
+  setMode('product');
+  if (md) md.classList.add('primary');
+  if (typeof openDistStudio === 'function') openDistStudio();
+}
+function navPub() {
+  if (!window.current) { showToast('เลือกสินค้าก่อน แล้วค่อยเปิด Publishing', false); setMode('product'); return; }
+  const mb = $('modePub'); if (mb) mb.classList.add('primary');
+  const wn = $('wsName'); if (wn) wn.textContent = 'Publishing';
+  setMode('product');
+  if (mb) mb.classList.add('primary');
+  if (typeof openDistStudio === 'function') { openDistStudio(); if (typeof distSwitchTab === 'function') distSwitchTab('publishing'); }
 }
 
 async function apiSet(url, method, body) {

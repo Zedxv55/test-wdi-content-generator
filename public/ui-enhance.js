@@ -93,6 +93,12 @@
 
 // P2: ESC closes topmost drawer/modal/nav.
 document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){
+    const t=e.target;
+    if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'))return;
+    if(typeof generate==='function'&&window.current){e.preventDefault();try{generate();}catch{}}
+    return;
+  }
   if(e.key!=='Escape')return;
   try{
     if(typeof closeCreative==='function')closeCreative();

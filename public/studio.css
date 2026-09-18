@@ -155,6 +155,12 @@ body.nav-open #navScrim{display:block}
 #mapWorkspace .panel{margin-bottom:12px}
 .map-vehicle{text-align:center}
 #mapCanvas{touch-action:pan-x pan-y}
+/* VREDESIGN header: brand left / workspace center / status right + text nav */
+header{position:relative}
+.ws-name{position:absolute;left:50%;transform:translateX(-50%);font-size:13px;font-weight:800;letter-spacing:1.2px;color:var(--st-muted);white-space:nowrap}
+#modeProduct,#modeSet,#modeMap,#modeDist,#modePub{background:transparent;border:0;color:var(--st-muted);font-weight:700;padding:8px 10px}
+#modeProduct:hover,#modeSet:hover,#modeMap:hover,#modeDist:hover,#modePub:hover{color:#fff;border-color:transparent}
+@media(max-width:1100px){.ws-name{display:none}}
 /* P2: mode nav active underline (animated) */
 #modeProduct,#modeSet,#modeMap{position:relative}
 #modeProduct.primary::after,#modeSet.primary::after,#modeMap.primary::after{
@@ -165,6 +171,49 @@ body.nav-open #navScrim{display:block}
 /* Set Builder workspace */
 #setWorkspace .panel{margin-bottom:12px}
 #modeProduct.primary,#modeSet.primary{background:var(--st-accent);border-color:var(--st-accent);color:#141414}
+/* tabs underline (dist platform tabs + generic secondary tab pattern) */
+.dist-plat-active{position:relative}
+/* ===== VREDESIGN: studio composition (not dashboard) ===== */
+.editor{background:linear-gradient(180deg,#0d1219,#0a0e14)}
+/* step rail */
+.steps-mini{display:flex;align-items:center;gap:0;margin:2px 0 16px}
+.steps-mini .sm{flex:1;text-align:center;font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--st-muted);padding:7px 2px;border-bottom:2px solid #232c38;position:relative}
+.steps-mini .sm.on{color:var(--st-accent);border-color:var(--st-accent)}
+.steps-mini .sm+.sm{margin-left:0}
+/* product canvas head */
+.ph-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 0 4px}
+.ph-head h1{font-size:26px!important;line-height:1.25;margin:4px 0 0}
+.ph-head .eyebrow{font-size:11px;letter-spacing:1px;color:var(--st-muted)}
+/* hero: framed media + info */
+.hero-grid{display:grid;grid-template-columns:minmax(300px,440px) minmax(0,1fr);gap:24px;align-items:start;margin-top:12px}
+.hero-media{position:relative;border:1px solid #2b3441;border-radius:16px;padding:14px;background:radial-gradient(120% 90% at 50% 0%,#1a2230 0,#10151d 60%)}
+.hero-media .product-img{width:100%;height:300px;min-height:0!important;max-height:320px!important;object-fit:contain;background:#fff;border-radius:10px}
+.hero-media .thumbs{grid-column:auto}
+.hero-media .thumbs img{width:52px;height:52px}
+.hero-info{min-width:0}
+.hero-info .code-big{font-size:14px;font-weight:800;color:var(--st-accent);letter-spacing:.5px}
+.keyfacts{list-style:none;margin:12px 0;padding:0;font-size:13px;line-height:1.7}
+.keyfacts li{border:0;padding:3px 0;color:#d5dce6}
+.keyfacts li:first-child{font-weight:700}
+/* creative summary strip */
+#selVBox .selv{background:transparent;border:1px solid #2f6b4a;border-radius:12px}
+/* CTA premium */
+#btnGenerate{position:relative;overflow:hidden;font-size:16px!important;min-height:56px!important}
+#btnGenerate kbd{font-family:inherit;font-size:11px;font-weight:700;opacity:.65;border:1px solid currentColor;border-radius:6px;padding:2px 7px;margin-left:10px}
+#btnGenerate:hover::after{content:"";position:absolute;top:0;bottom:0;width:40%;left:-50%;background:linear-gradient(100deg,transparent,#ffffff2e,transparent);animation:shinePass .7s var(--ease-standard) 1}
+@keyframes shinePass{to{left:130%}}
+/* output timeline */
+.tl-timeline{display:flex;gap:6px;margin:14px 0 4px}
+.tl-seg{flex:1;background:#141c27;border:1px solid #2f6b4a;border-radius:10px;padding:8px 10px;font-size:11px;min-width:0;animation:viewIn var(--duration-normal) var(--ease-standard) both}
+.tl-seg:nth-child(2){animation-delay:60ms}.tl-seg:nth-child(3){animation-delay:120ms}.tl-seg:nth-child(4){animation-delay:180ms}.tl-seg:nth-child(5){animation-delay:240ms}
+.tl-seg b{display:block;font-size:12px;color:var(--st-accent)}
+.tl-seg span{color:var(--st-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.tl-bar{height:3px;border-radius:2px;background:#233040;margin-top:6px;position:relative;overflow:hidden}
+.tl-bar i{position:absolute;inset:0;background:var(--st-accent);border-radius:2px;transform-origin:left;animation:tlFill .8s var(--ease-standard) both}
+@keyframes tlFill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+/* list cards: breathing room + dots */
+#products .item{padding:12px 14px}
+.vdots{color:var(--st-accent);letter-spacing:2px;font-size:10px}
 /* Phase E: declutter — kill duplicates, tighten */
 #selSeries{display:none}
 #statusFilter{display:none}
