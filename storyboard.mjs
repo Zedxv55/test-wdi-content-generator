@@ -48,15 +48,17 @@ export function buildSceneRefs({ dnaRefs = [], sceneRefs = [], generated = [] })
 }
 
 // Rule-based image QA (NOT vision). Returns {status, checks[]}.
-export function qaImage({ scene, prompt, refsCount = 0, aspect, supportedAspects = [], sizeOk = true }) {
+export function qaImage({ scene, prompt, refsCount = 0, aspect, supportedAspects = [], sizeOk = true, pixelRefs = -1 }) {
   const checks = [];
   const pass = (name, detail) => checks.push({ name, status: 'PASS', detail: detail || '' });
   const review = (name, detail) => checks.push({ name, status: 'REVIEW', detail: detail || '' });
   const fail = (name, detail) => checks.push({ name, status: 'FAIL', detail: detail || '' });
   if (!prompt || prompt.length < 80) fail('prompt-present', 'prompt too short/empty');
   else pass('prompt-present', prompt.length + ' chars');
-  if (refsCount > 0) pass('references', refsCount + ' ref(s) attached as prompt context (text-only provider: not sent as pixels)');
-  else review('references', 'no reference images attached');
+  if (refsCount > 0) {
+    if (pixelRefs >= 0) pass('references', pixelRefs > 0 ? `${pixelRefs} ref(s) transmitted as PIXELS to provider` : '0 pixel refs transmitted');
+    else pass('references', refsCount + ' ref(s) attached as prompt context (text-only provider: not sent as pixels)');
+  } else review('references', 'no reference images attached');
   if (supportedAspects.length && !supportedAspects.includes(aspect)) fail('aspect', `${aspect} not in [${supportedAspects.join(', ')}]`);
   else pass('aspect', aspect || 'default');
   if (!sizeOk) fail('size', 'unsupported size for provider');

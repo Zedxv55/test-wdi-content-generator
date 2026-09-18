@@ -11,6 +11,8 @@ function curScene() {
   return (b.scenes || []).find(s => s.id === window._img.sceneDbId) || b.scenes[0] || null;
 }
 async function renderCanvas() {
+  try { await loadImgCaps(); } catch {}
+  imgProvSel = ((window._img.settings || {}).provider) || imgProvSel || 'auto';
   const host = document.createElement('div');
   host.id = 'canvasHost';
   const old = $('canvasHost');
@@ -28,9 +30,9 @@ async function renderCanvas() {
   host.innerHTML = `<div class="box" style="margin-top:10px"><div class="box-title"><h3>🎞 Canvas · ${esc(sc.scene_id)} <small style="opacity:.6">${scenesPos()}</small></h3><span id="canvasQa"></span></div>
   <div id="stageBox" style="text-align:center;background:#05070b;border-radius:12px;padding:14px;min-height:200px;display:grid;place-items:center">${imgHtml}</div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
-    <select id="cvAspect" aria-label="สัดส่วน">${['1:1', '16:9', '9:16', '4:5', '3:4', '4:3'].map(a => `<option${(st.aspect || '1:1') === a ? ' selected' : ''}>${a}</option>`).join('')}</select>
-    <select id="cvQuality" aria-label="คุณภาพ">${['Draft', 'Standard', 'High'].map(q => `<option${(st.quality || 'Standard') === q ? ' selected' : ''}>${q}</option>`).join('')}</select>
-    <select id="cvSize" aria-label="ขนาด">${[768, 1024, 1344].map(s => `<option${Number(st.size || 1024) === s ? ' selected' : ''}>${s}</option>`).join('')}</select>
+    <select id="cvAspect" aria-label="สัดส่วน">${imgAspects().map(a => `<option${(st.aspect || '1:1') === a ? ' selected' : ''}>${a}</option>`).join('')}</select>
+    <select id="cvQuality" aria-label="คุณภาพ">${imgQualities().map(q => `<option${(st.quality || 'Standard') === q ? ' selected' : ''}>${q}</option>`).join('')}</select>
+    <select id="cvSize" aria-label="ขนาด">${(imgSizes().length?imgSizes():['auto']).map(s => `<option${Number(st.size || 1024) === s ? ' selected' : ''}>${s}</option>`).join('')}</select>
     <button class="generate" onclick="genSelected(this)">Generate</button>
     <button class="secondary" onclick="genAllScenes(this)">Generate ทั้งบอร์ด</button>
     <button class="secondary" onclick="dlCurrentImage(this)">Download</button>
@@ -39,6 +41,7 @@ async function renderCanvas() {
   <div id="queueBox" style="margin-top:8px"></div></div>`;
   loadAdvBox();
   paintStageRatio();
+  paintProvRow();
   if (typeof renderFlowPack === 'function') renderFlowPack();
 }
 function scenesPos() {
@@ -65,6 +68,19 @@ async function providerNote() {
   } catch { _provNote = 'unreachable'; }
   return _provNote;
 }
+function paintProvRow() {
+  const el = $('provRow');
+  if (!el) return;
+  const opts = imgProvList().map(p => `<option value="${p.id}"${imgProvSel === p.id ? ' selected' : ''}>${esc(p.label)}</option>`).join('');
+  el.innerHTML = `<select id="cvProv" aria-label="provider" style="min-height:38px;background:#121720;color:#fff;border:1px solid #303744;border-radius:9px" onchange="imgProvSel=this.value;persistImgSettings();renderCanvas();">${opts}</select>${imgProvBadge()}
+  <small style="opacity:.65">Default: FREE demo (no charges possible). Paid Reference AI requires ALLOW_PAID_IMAGE=true and shows its price.</small>`;
+}
+function persistImgSettings() {
+  try {
+    const s = readSettings();
+    window._img.settings = { ...(window._img.settings || {}), aspect: s.aspect, quality: s.quality, size: s.size, provider: s.provider };
+  } catch {}
+}
 function paintStageRatio() {
   const a = ($('cvAspect') || {}).value || '1:1';
   const [w, h] = a.split(':').map(Number);
@@ -74,11 +90,45 @@ function paintStageRatio() {
   const sel = $('cvAspect');
   if (sel && !sel._bound) { sel._bound = true; sel.addEventListener('change', paintStageRatio); }
 }
+let imgCapsCache = null, imgProvSel = 'demo';
+async function loadImgCaps() {
+  if (imgCapsCache) return imgCapsCache;
+  imgCapsCache = await fetch('/api/image/status').then(r => r.json());
+  return imgCapsCache;
+}
+function imgProvList() {
+  const ps = (imgCapsCache && imgCapsCache.providers) || {};
+  return Object.entries(ps).map(([k, v]) => ({ id: k === 'pollinations' ? 'demo' : 'auto', key: k, label: (v.label || k) + (v.paid ? ' (~$0.04/pic)' : ' (free)'), pixel: !v.textOnly, paid: !!v.paid, enabled: v.configured !== false }));
+}
+function imgAspects() {
+  const ps = (imgCapsCache && imgCapsCache.providers) || {};
+  const p = imgProvSel === 'demo' ? ps.pollinations : ps['openrouter-image'];
+  return (p && p.caps && p.caps.aspectRatios) || ['1:1'];
+}
+function imgQualities() {
+  const ps = (imgCapsCache && imgCapsCache.providers) || {};
+  const p = imgProvSel === 'demo' ? ps.pollinations : ps['openrouter-image'];
+  return (p && p.caps && p.caps.qualityModes) || ['Standard'];
+}
+function imgSizes() {
+  const ps = (imgCapsCache && imgCapsCache.providers) || {};
+  const p = imgProvSel === 'demo' ? ps.pollinations : ps['openrouter-image'];
+  return (p && p.caps && p.caps.sizes) || [];
+}
+function imgProvBadge() {
+  const ps = (imgCapsCache && imgCapsCache.providers) || {};
+  const p = imgProvSel === 'demo' ? ps.pollinations : ps['openrouter-image'];
+  if (!p) return '';
+  if (p.textOnly) return '<span class="pill warn">TEXT ONLY — refs not transmitted</span>';
+  if (p.paid && !p.paidEnabled) return '<span class="pill warn">PAID — currently OFF (no charges possible)</span>';
+  return '<span class="pill ok">PIXEL REFERENCES</span>';
+}
 function readSettings() {
   return {
     aspect: ($('cvAspect') || {}).value || '1:1',
     quality: ($('cvQuality') || {}).value || 'Standard',
-    size: Number(($('cvSize') || {}).value) || 1024
+    size: Number(($('cvSize') || {}).value) || 1024,
+    provider: ($('cvProv') || {}).value || imgProvSel || 'auto'
   };
 }
 async function genSelected(btn) {
@@ -94,6 +144,7 @@ async function genAllScenes(btn) {
   await genScenes(b.scenes.map(s => s.id), btn);
 }
 async function genScenes(ids, btn) {
+  try { persistImgSettings(); } catch {}
   const b = window._img.board;
   if (btn) btn.disabled = true;
   const qbox = $('queueBox');

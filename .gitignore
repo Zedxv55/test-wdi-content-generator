@@ -18,3 +18,4 @@ public/*.bak*
 *.db-shm
 data/backups/
 data/content-pack-cache.json
+data/generated/

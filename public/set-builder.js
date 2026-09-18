@@ -21,7 +21,6 @@ function setMode(m) {
   else if (m === 'image') { if (typeof renderImageHome === 'function') renderImageHome(); }
   else if (m === 'dist') { if (typeof renderDistHome === 'function') renderDistHome(); }
   else if (m === 'pub') { if (typeof renderPubHome === 'function') renderPubHome(); }
-  else if (m === 'image') { if (typeof renderImageHome === 'function') renderImageHome(); }
 }
 function navDist() {
   if (!window.current) { showToast('เลือกสินค้าก่อน แล้วค่อยเปิด Distribution', false); setMode('product'); return; }

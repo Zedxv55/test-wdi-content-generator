@@ -819,16 +819,23 @@ app.post('/api/storyboards/:id/reorder', (q, s) => { try {
 app.post('/api/storyboards/:id/generate', async (q, s) => { try {
   const sb = getStoryboard(Number(q.params.id) || 0);
   if (!sb) return s.status(404).json({ error: 'not found' });
-  const st = providerStatus();
-  if (!st.configured) return s.status(503).json({ error: 'Image generation provider not configured' });
+  const provMode = String(q.body.provider || (q.body.settings || {}).provider || 'auto').toLowerCase();
+  const uiSettings = (q.body.settings || {});
+  const pst = providerStatus();
+  const refProv = pst.providers['openrouter-image'];
+  if (provMode !== 'demo' && !refProv.supportsReferences) {
+    const paidOff = refProv.paid && !refProv.paidEnabled;
+    return s.status(503).json({ error: paidOff ? 'PAID_DISABLED' : 'REFERENCE_IMAGE_PROVIDER_NOT_CONFIGURED', detail: refProv.message, providers: { 'openrouter-image': { configured: !!refProv.configured, paidEnabled: !!refProv.paidEnabled }, pollinations: { textOnly: true } } });
+  }
+  const demo = provMode === 'demo';
   const settings = { aspect: clean(q.body.aspect) || '1:1', quality: clean(q.body.quality) || 'Standard', ...(q.body.settings || {}) };
   const caps = loadCapabilities();
   const mk = sb.flow_model && caps.models[sb.flow_model] ? sb.flow_model : caps.defaultModel;
   const mcaps = caps.models[mk] || {};
-  const aspects = mcaps.aspect_ratios || ['1:1'];
-  if (!aspects.includes(settings.aspect)) return s.status(400).json({ error: `Unsupported aspect ratio ${settings.aspect} for ${mk}`, supported: aspects });
-  const px = QUALITY_PX[settings.quality] || QUALITY_PX.Standard;
-  const { w, h } = aspectDims(settings.aspect, px);
+  const refCaps = pst.providers['openrouter-image'].caps;
+  const aspects = demo ? (['1:1', '4:5', '3:4', '4:3', '16:9', '9:16']) : (refCaps.aspectRatios || ['1:1']);
+  if (!aspects.includes(settings.aspect)) return s.status(400).json({ error: 'UNSUPPORTED_ASPECT_RATIO', message: `Aspect ${settings.aspect} not supported`, supported: aspects });
+  const { w, h } = aspectDims(settings.aspect, 1024);
   const dna = sbDna(sb.product_code);
   const brief = { ...(sb.brief_json ? JSON.parse(sb.brief_json) : {}), ...(q.body.brief || {}) };
   const want = Array.isArray(q.body.scene_ids) && q.body.scene_ids.length
@@ -839,19 +846,24 @@ app.post('/api/storyboards/:id/generate', async (q, s) => { try {
   for (const sc of want) {
     const refs = buildSceneRefs({ dnaRefs: dna.images, sceneRefs: JSON.parse(sc.refs_json || '[]'), generated: [] });
     const { prompt, negative } = buildSceneImagePrompt({ dna, scene: { scene_id: sc.scene_id, purpose: sc.purpose, shot: sc.shot, camera: sc.camera, environment: sc.environment || brief.environment, lighting: sc.lighting || brief.lighting, action: sc.action }, brief, settings });
-    const gen = createGeneration(sc.id, { prompt, negative, model: mk, provider: st.provider, aspect: settings.aspect, quality: settings.quality, size: `${w}x${h}`, refs, status: 'RUNNING' });
+    const gen = createGeneration(sc.id, { prompt, negative, model: demo ? 'flux' : (process.env.OPENROUTER_IMAGE_MODEL || 'openrouter-image'), provider: demo ? 'pollinations' : 'openrouter-image', aspect: settings.aspect, quality: settings.quality, size: demo ? `${w}x${h}` : 'provider-native', refs, status: 'RUNNING' });
     try {
-      const out = await providerGenerate({ prompt, w, h });
+      const out = demo
+        ? await providerGenerate({ provider: 'demo', prompt, quality: settings.quality, aspect: settings.aspect })
+        : await providerGenerate({ provider: 'openrouter-image', prompt, negativePrompt: negative, references: refs.map(r => r.url), aspect: settings.aspect, quality: settings.quality });
       const saved = saveAsset(out.buffer, out.mime);
       addGenerationAsset(gen.id, { kind: 'image', path: saved.rel, mime: out.mime, bytes: saved.bytes });
-      addGenerationRefs(gen.id, refs.slice(0, 6));
-      const qa = qaImage({ scene: sc, prompt, refsCount: refs.length, aspect: settings.aspect, supportedAspects: aspects, sizeOk: true });
+      const submitted = demo ? [] : (out.refsSubmitted || []).map(r => ({ url: r.url, source: 'wdi', view: 'submitted-bytes:' + r.bytes }));
+      addGenerationRefs(gen.id, submitted);
+      const qa = qaImage({ scene: sc, prompt, refsCount: demo ? 0 : submitted.length, pixelRefs: demo ? -1 : submitted.length, aspect: settings.aspect, supportedAspects: demo ? ['1:1', '4:5', '3:4', '4:3', '16:9', '9:16'] : ['1:1', '4:5', '3:4', '4:3', '16:9', '9:16', '3:2', '2:3'], sizeOk: true });
+      qa.pixel_refs = demo ? 0 : submitted.length;
       initDb().prepare('UPDATE storyboard_generations SET qa_json=? WHERE id=?').run(JSON.stringify(qa), gen.id);
       setGenerationStatus(gen.id, qa.status === 'FAIL' ? 'FAILED' : 'GENERATED');
-      results.push({ scene: sc.scene_id, ok: true, generation_id: gen.id, version: gen.version, qa, asset: saved.rel });
+      results.push({ scene: sc.scene_id, ok: true, generation_id: gen.id, version: gen.version, qa, asset: saved.rel, provider: demo ? 'pollinations' : 'openrouter-image', pixel_refs: demo ? 0 : submitted.length });
     } catch (e) {
+      const code = e?.code || null;
       setGenerationStatus(gen.id, 'FAILED', e?.message || 'failed');
-      results.push({ scene: sc.scene_id, ok: false, generation_id: gen.id, version: gen.version, error: e?.message || 'failed' });
+      results.push({ scene: sc.scene_id, ok: false, generation_id: gen.id, version: gen.version, error: e?.message || 'failed', code });
     }
   }
   s.json({ ok: true, results, board: getStoryboard(sb.id) });
