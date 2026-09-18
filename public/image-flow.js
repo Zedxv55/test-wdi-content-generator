@@ -29,10 +29,12 @@ async function renderCanvas() {
   const st = (window._img.settings || {});
   host.innerHTML = `<div class="box" style="margin-top:10px"><div class="box-title"><h3>🎞 Canvas · ${esc(sc.scene_id)} <small style="opacity:.6">${scenesPos()}</small></h3><span id="canvasQa"></span></div>
   <div id="stageBox" style="text-align:center;background:#05070b;border-radius:12px;padding:14px;min-height:200px;display:grid;place-items:center">${imgHtml}</div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
+  <div id="provRow" style="margin-top:10px"></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">
     <select id="cvAspect" aria-label="สัดส่วน">${imgAspects().map(a => `<option${(st.aspect || '1:1') === a ? ' selected' : ''}>${a}</option>`).join('')}</select>
     <select id="cvQuality" aria-label="คุณภาพ">${imgQualities().map(q => `<option${(st.quality || 'Standard') === q ? ' selected' : ''}>${q}</option>`).join('')}</select>
     <select id="cvSize" aria-label="ขนาด">${(imgSizes().length?imgSizes():['auto']).map(s => `<option${Number(st.size || 1024) === s ? ' selected' : ''}>${s}</option>`).join('')}</select>
+    <button class="secondary" onclick="showFreePanel()">FREE HTML</button>
     <button class="generate" onclick="genSelected(this)">Generate</button>
     <button class="secondary" onclick="genAllScenes(this)">Generate ทั้งบอร์ด</button>
     <button class="secondary" onclick="dlCurrentImage(this)">Download</button>
@@ -71,9 +73,24 @@ async function providerNote() {
 function paintProvRow() {
   const el = $('provRow');
   if (!el) return;
-  const opts = imgProvList().map(p => `<option value="${p.id}"${imgProvSel === p.id ? ' selected' : ''}>${esc(p.label)}</option>`).join('');
-  el.innerHTML = `<select id="cvProv" aria-label="provider" style="min-height:38px;background:#121720;color:#fff;border:1px solid #303744;border-radius:9px" onchange="imgProvSel=this.value;persistImgSettings();renderCanvas();">${opts}</select>${imgProvBadge()}
-  <small style="opacity:.65">Default: FREE demo (no charges possible). Paid Reference AI requires ALLOW_PAID_IMAGE=true and shows its price.</small>`;
+  const ps = (imgCapsCache && imgCapsCache.providers) || {};
+  const demo = ps.pollinations || {};
+  const ref = ps['openrouter-image'] || {};
+  if (imgProvSel !== 'demo' && imgProvSel !== 'openrouter-image') imgProvSel = 'demo';
+  const refOff = !(ref.paidEnabled && ref.configured);
+  const opts = `<option value="demo"${imgProvSel === 'demo' ? ' selected' : ''}>FREE DEMO — no charge, text only</option>`
+    + `<option value="openrouter-image"${imgProvSel === 'openrouter-image' ? ' selected' : ''}${refOff ? ' disabled' : ''}>REFERENCE AI ~$0.04/image${refOff ? ' (OFF)' : ''}</option>`;
+  el.innerHTML = `<div style="border:1px solid #2b3441;border-radius:10px;padding:8px 10px;margin-bottom:2px">`
+    + `<div style="font-size:11px;opacity:.7;margin-bottom:6px">IMAGE ENGINE (paid calls need explicit selection + server opt-in; charges may vary by provider/model)</div>`
+    + `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><select id="cvProv" aria-label="provider" style="min-height:38px;background:#121720;color:#fff;border:1px solid #303744;border-radius:9px" onchange="imgProvSel=this.value;persistImgSettings();renderCanvas();">${opts}</select>${imgProvBadge()}</div></div>`;
+  const q = $('cvQuality'), z = $('cvSize');
+  if (imgProvSel === 'openrouter-image') {
+    if (q) { q.disabled = true; q.title = 'Provider native quality'; }
+    if (z) { z.disabled = true; z.title = 'Provider native size'; }
+  } else {
+    if (q) q.disabled = false;
+    if (z) z.disabled = false;
+  }
 }
 function persistImgSettings() {
   try {
@@ -128,7 +145,7 @@ function readSettings() {
     aspect: ($('cvAspect') || {}).value || '1:1',
     quality: ($('cvQuality') || {}).value || 'Standard',
     size: Number(($('cvSize') || {}).value) || 1024,
-    provider: ($('cvProv') || {}).value || imgProvSel || 'auto'
+    provider: ($('cvProv') || {}).value || imgProvSel || 'demo'
   };
 }
 async function genSelected(btn) {

@@ -84,7 +84,8 @@ const openrouterImage = {
     const ok = this.configured();
     const allowed = paidAllowed();
     return {
-      provider: this.id, label: this.label, configured: ok && allowed, textOnly: false,
+      provider: this.id, label: this.label, configured: ok, paid: true, paidEnabled: allowed,
+      usable: ok && allowed, textOnly: false,
       supportsReferences: ok && allowed, maxReferences: 6,
       model: ok ? env('OPENROUTER_IMAGE_MODEL') : '',
       paid: true, costNote: PAID_COST_NOTE, paidEnabled: allowed,
@@ -153,7 +154,8 @@ const pollinations = {
   configured() { return true; },
   status() {
     return {
-      provider: this.id, label: this.label, configured: true, textOnly: true,
+      provider: this.id, label: this.label, configured: true, paid: false, paidEnabled: true,
+      usable: true, textOnly: true,
       supportsReferences: false, maxReferences: 0, model: 'flux',
       message: 'TEXT-ONLY demo fallback. Reference images are NOT transmitted (prompt wording only). Select explicitly for demo use.'
     };

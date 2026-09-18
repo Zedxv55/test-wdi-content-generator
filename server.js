@@ -819,13 +819,16 @@ app.post('/api/storyboards/:id/reorder', (q, s) => { try {
 app.post('/api/storyboards/:id/generate', async (q, s) => { try {
   const sb = getStoryboard(Number(q.params.id) || 0);
   if (!sb) return s.status(404).json({ error: 'not found' });
-  const provMode = String(q.body.provider || (q.body.settings || {}).provider || 'auto').toLowerCase();
+  let provMode = String(q.body.provider || (q.body.settings || {}).provider || 'demo').toLowerCase();
+  if (provMode === 'auto') provMode = 'demo';
   const uiSettings = (q.body.settings || {});
   const pst = providerStatus();
   const refProv = pst.providers['openrouter-image'];
-  if (provMode !== 'demo' && !refProv.supportsReferences) {
-    const paidOff = refProv.paid && !refProv.paidEnabled;
-    return s.status(503).json({ error: paidOff ? 'PAID_DISABLED' : 'REFERENCE_IMAGE_PROVIDER_NOT_CONFIGURED', detail: refProv.message, providers: { 'openrouter-image': { configured: !!refProv.configured, paidEnabled: !!refProv.paidEnabled }, pollinations: { textOnly: true } } });
+  if (provMode !== 'demo') {
+    if (!refProv.configured || !refProv.paidEnabled) {
+      const paidOff = refProv.paid && !refProv.paidEnabled;
+      return s.status(503).json({ error: paidOff ? 'PAID_DISABLED' : 'REFERENCE_IMAGE_PROVIDER_NOT_CONFIGURED', detail: refProv.message, provider: 'openrouter-image', paid: true });
+    }
   }
   const demo = provMode === 'demo';
   const settings = { aspect: clean(q.body.aspect) || '1:1', quality: clean(q.body.quality) || 'Standard', ...(q.body.settings || {}) };
@@ -940,6 +943,62 @@ function await2pack(b) {
   }
   return compileFlowPack({ storyboard: b, scenes: full, brief: b.brief_json ? JSON.parse(b.brief_json) : {}, model: b.flow_model });
 }
+// ---------- FREE CANVAS attach + AI layout director (no image model involved) ----------
+app.post('/api/canvas-asset', (q, s) => { try {
+  const sceneDbId = Number(q.body.scene_db_id) || 0;
+  const sc = initDb().prepare('SELECT * FROM storyboard_scenes WHERE id=?').get(sceneDbId);
+  if (!sc) return s.status(404).json({ error: 'scene not found' });
+  const dataUrl = String(q.body.dataUrl || '');
+  const m = dataUrl.match(/^data:(image\/(png|jpeg));base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) return s.status(400).json({ error: 'invalid dataUrl (png/jpeg base64 only)' });
+  const buf = Buffer.from(m[3], 'base64');
+  if (buf.length < 1000 || buf.length > 12 * 1024 * 1024) return s.status(400).json({ error: 'invalid image size' });
+  const sj = q.body.sceneJson && typeof q.body.sceneJson === 'object' ? q.body.sceneJson : {};
+  const aspect = clean(q.body.aspect) || `${sj?.canvas?.ratio || 'free'}`;
+  const saved = saveAsset(buf, m[1]);
+  const refs = Array.isArray(q.body.referenceUrls) ? q.body.referenceUrls.filter(u => typeof u === 'string').slice(0, 6) : [];
+  const gen = createGeneration(sceneDbId, {
+    prompt: `[FREE HTML RENDER] preset=${sj.preset || ''} ratio=${sj?.canvas?.ratio || ''} scale=${sj?.product?.scale ?? ''}`,
+    negative: '', model: 'canvas-2d', provider: 'canvas-free',
+    aspect, quality: 'Free', size: `${sj?.canvas?.width || ''}x${sj?.canvas?.height || ''}`,
+    refs: refs.map(u => ({ url: u, source: 'canvas-composed', view: '' })), status: 'GENERATED'
+  });
+  addGenerationAsset(gen.id, { kind: 'image', path: saved.rel, mime: m[1], bytes: saved.bytes });
+  addGenerationRefs(gen.id, refs.map(u => ({ url: u, source: 'canvas-composed', view: '' })));
+  s.json({ ok: true, generation_id: gen.id, version: gen.version, scene: sc.scene_id, asset: saved.rel, provider: 'canvas-free', billed: false });
+} catch (e) { s.status(500).json({ error: e.message }); } });
+app.post('/api/canvas-director', async (q, s) => { try {
+  const code = clean(q.body.product_code);
+  if (!code) return s.status(400).json({ error: 'product_code required' });
+  const hasKey = Boolean(process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY);
+  if (!hasKey) return s.status(503).json({ error: 'Text AI not configured (needs OPENROUTER_API_KEY or OPENAI_API_KEY)' });
+  const prod = getProductRow(code) || {};
+  const W = Math.max(200, Math.min(2048, Number(q.body.W) || 1080));
+  const H = Math.max(200, Math.min(2048, Number(q.body.H) || 1080));
+  const sc = q.body.scene || {};
+  const sysPrompt = `You are a layout director for an HTML Canvas product renderer. Output JSON ONLY (no fences): {"preset":"product-hero|product-center|product-left|product-right|catalog|marketplace|social|storyboard-keyframe|minimal-oem","product":{"x":0-1,"y":0-1,"scale":0.3-0.95},"bg":"dark-studio|oem-white|warm-gray|navy|solid","rim":["#rrggbb",0-0.5],"safeTop":0-${H},"safeBottom":0-${H},"text":[]}. Product must stay fully inside canvas. No explanation.`;
+  const ai = process.env.OPENROUTER_API_KEY
+    ? new OpenAI({ apiKey: process.env.OPENROUTER_API_KEY, baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1' })
+    : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const model = process.env.OPENROUTER_API_KEY ? (process.env.OPENROUTER_MODEL || 'gpt-4o-mini') : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
+  const r = await ai.chat.completions.create({ model, messages: [{ role: 'user', content: `${sysPrompt}\n\nPRODUCT: ${code} ${prod.product_name_th || prod.product_name_en || ''}\nSCENE purpose: ${sc.purpose || ''} shot: ${sc.shot || ''}\nCANVAS: ${W}x${H}` }], temperature: 0.3, max_tokens: 500 });
+  const msg = r.choices?.[0]?.message || {};
+  let t = typeof msg.content === 'string' ? msg.content.trim() : '';
+  if (!t && Array.isArray(msg.content)) t = msg.content.map(x => typeof x === 'string' ? x : (x?.text || '')).join('').trim();
+  if (!t && msg.reasoning) t = String(msg.reasoning).trim();
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  if (!t.startsWith('{') && t.includes('{')) { const a = t.indexOf('{'); const b = t.lastIndexOf('}'); if (b > a) t = t.slice(a, b + 1); }
+  const d = JSON.parse(t);
+  const scene = {
+    canvas: { ratio: `${W}x${H}`, width: W, height: H },
+    background: { type: 'gradient', preset: d.bg || 'dark-studio' },
+    product: { source: '', x: Math.max(0.05, Math.min(0.95, Number(d?.product?.x ?? 0.5))), y: Math.max(0.05, Math.min(0.95, Number(d?.product?.y ?? 0.55))), scale: Math.max(0.3, Math.min(0.95, Number(d?.product?.scale ?? 0.7))), rotation: 0 },
+    lighting: { rimColor: (Array.isArray(d.rim) ? d.rim[0] : '#ffd76a'), rimOpacity: Math.max(0, Math.min(0.5, Number(Array.isArray(d.rim) ? d.rim[1] : 0.22))) },
+    textSafeArea: { top: Math.max(0, Number(d.safeTop) || 0), bottom: Math.max(0, Number(d.safeBottom) || 0) },
+    text: [], preset: d.preset || 'product-hero'
+  };
+  s.json({ ok: true, scene, billed: 'text-model only (no image charge)' });
+} catch (e) { s.status(502).json({ error: e?.message || 'director failed' }); } });
 app.get('/api/image/asset/:id', (q, s) => { try {
   const d = initDb();
   const a = d.prepare('SELECT * FROM generation_assets WHERE id=?').get(Number(q.params.id) || 0);
