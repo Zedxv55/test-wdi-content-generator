@@ -2,35 +2,8 @@
 // Product workflow untouched. All set logic via /api/sets*.
 let setModeCur = 'product', curSetId = 0, curSet = null, setPlanVer = 0;
 
-const WS_TITLES = { product: 'Product Studio', set: 'Set Builder', map: 'Vehicle Product Map', image: 'Image Studio', dist: 'Content Distribution', pub: 'Publishing' };
-function setMode(m) {
-  setModeCur = m;
-  const secs = { product: document.querySelector('.workspace-main'), set: $('setWorkspace'), map: $('mapWorkspace'), image: $('imgWorkspace'), dist: $('distWorkspace'), pub: $('pubWorkspace') };
-  for (const [k, el] of Object.entries(secs)) {
-    if (!el) continue;
-    if (k === 'product') el.style.display = (m === 'product') ? '' : 'none';
-    else el.hidden = m !== k;
-  }
-  document.querySelectorAll('#rail button').forEach(b => b.classList.toggle('primary', b.dataset.mode === m));
-  const prodUI = m === 'product';
-  const tb = document.querySelector('.toolbar'); if (tb) tb.style.display = prodUI ? '' : 'none';
-  const ds = $('dashstrip'); if (ds) ds.style.display = prodUI ? '' : 'none';
-  const wn = $('wsName'); if (wn) wn.textContent = WS_TITLES[m] || 'Product Studio';
-  if (m === 'set') renderSetHome();
-  else if (m === 'map') { if (typeof renderMapHome === 'function') renderMapHome(); }
-  else if (m === 'image') { if (typeof renderImageHome === 'function') renderImageHome(); }
-  else if (m === 'dist') { if (typeof renderDistHome === 'function') renderDistHome(); }
-  else if (m === 'pub') { if (typeof renderPubHome === 'function') renderPubHome(); }
-}
-function navDist() {
-  if (!window.current) { showToast('เลือกสินค้าก่อน แล้วค่อยเปิด Distribution', false); setMode('product'); return; }
-  setMode('dist');
-  if (typeof openDistStudio === 'function') openDistStudio();
-}
-function navPub() {
-  setMode('pub');
-  if (typeof openDistStudio === 'function') { /* publishing lives in pub workspace */ }
-}
+// NOTE: legacy one-page shell switchers (setMode/navDist/navPub) were removed:
+// set.html is a standalone page; navigation uses plain links + ?set= deep-link.
 
 async function apiSet(url, method, body) {
   const r = await fetch(url, { method: method || 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(r => r.json());
@@ -40,18 +13,42 @@ async function apiSet(url, method, body) {
 
 async function renderSetHome() {
   const el = $('setBody');
-  el.innerHTML = '<div class="loading">กำลังโหลด sets...</div>';
+  el.innerHTML = '<div class="loading">กำลังโหลด Sets...</div>';
   try {
     const sets = await apiSet('/api/sets');
     const sc = $('setCount'); if (sc) sc.textContent = sets.length + ' sets';
-    const cards = sets.map(s => '<div class="box"><div class="box-title"><h3>' + esc(s.set_name || ('SET #' + s.id)) + '</h3><span>' + s.items + ' SKU · ' + esc(s.status || '') + '</span></div>'
-      + '<div style="font-size:12px;opacity:.75">' + esc(s.vehicle_family || '') + ' · Day ' + (s.campaign_day || 0) + '/' + (s.planned_days || 0) + '</div>'
-      + '<div style="margin-top:8px"><button class="secondary" onclick="openSet(' + s.id + ')">เปิด Set</button></div></div>').join('');
-    el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
-      + '<button class="secondary" onclick="setCreateUI()">+ สร้าง Set</button>'
-      + '<button class="secondary" onclick="setImportUI()">Import ตาราง Campaign</button></div>'
-      + '<div id="setCreate"></div>'
-      + (cards || '<div class="empty-state">ยังไม่มี Set — สร้างหรือ import ตาราง campaign</div>');
+    const totalSku = sets.reduce((n,s)=>n+(Number(s.items)||0),0);
+    const active = sets.filter(s=>String(s.status||'').toUpperCase()!=='DONE').length;
+    const cards = sets.map(s => `
+      <article class="set-home-card">
+        <div class="set-home-head">
+          <div><div class="set-home-name">${esc(s.set_name || ('SET #' + s.id))}</div>
+          <div class="set-home-count">${Number(s.items)||0} SKU · ${esc(s.vehicle_family||'ไม่ระบุรถ')}</div></div>
+          <span class="wp-status ${String(s.status||'').toUpperCase()==='DONE'?'ok':'warn'}">${esc(s.status||'DRAFT')}</span>
+        </div>
+        <div class="wp-meta" style="margin-top:12px">Campaign day ${Number(s.campaign_day)||0}/${Number(s.planned_days)||0}</div>
+        <div class="set-home-foot">
+          <span class="context-pill">${Number(s.items)||0} รายการ</span>
+          <button class="wp-action wp-action primary" onclick="openSet(${s.id})">เปิด Set →</button>
+        </div>
+      </article>`).join('');
+    el.innerHTML = `
+      <div class="wp-hero">
+        <div><span class="wp-eyebrow">Campaign composition</span><h2 class="wp-title" style="font-size:24px">จัดชุดสินค้าให้พร้อมผลิต</h2>
+        <p class="wp-subtitle">รวม SKU ที่เกี่ยวข้อง แล้วสร้าง storyboard จาก Set เดียว</p></div>
+        <div class="wp-kpis">
+          <div class="wp-kpi"><b>${sets.length}</b><span>SETS</span></div>
+          <div class="wp-kpi"><b>${totalSku}</b><span>SKU IN SETS</span></div>
+          <div class="wp-kpi"><b>${active}</b><span>ACTIVE</span></div>
+        </div>
+      </div>
+      <div class="wp-toolbar">
+        <button class="wp-action primary" onclick="setCreateUI()">＋ สร้าง Set</button>
+        <button class="wp-action" onclick="setImportUI()">Import Campaign</button>
+        <span class="spacer"></span><span class="wp-note">Set เป็นชั้น Campaign · Product เป็นชั้น SKU</span>
+      </div>
+      <div id="setCreate"></div>
+      <div class="set-home-grid">${cards || '<div class="wp-empty" style="grid-column:1/-1"><div class="wp-icon">🎬</div><b>ยังไม่มี Set</b>สร้าง Set หรือ Import ตาราง Campaign เพื่อเริ่มงาน</div>'}</div>`;
   } catch (e) { el.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; }
 }
 
@@ -153,7 +150,7 @@ async function setBuildPlan() {
     openSetRefreshPlans();
   } catch (e) { el.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; }
 }
-async function openSetRefreshPlans() { try { const d = await apiSet('/api/sets/' + curSetId); } catch {} }
+async function openSetRefreshPlans() { try { const d = await apiSet('/api/sets/' + curSetId); const pv = $('planVer'); if (pv) pv.innerHTML = (d.plans || []).map(p => `<option value="${p.version}"${p.is_current ? ' selected' : ''}>v${p.version} ${esc(p.note || '')}</option>`).join('') || '<option value="">ยังไม่มีแผน</option>'; } catch {} }
 function setRenderPlan(r) {
   const el = $('setPlan');
   const qc = r.qc || {};

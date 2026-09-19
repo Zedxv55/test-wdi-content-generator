@@ -1,0 +1,8 @@
+/* 21st-inspired interaction layer — vanilla CSS, no framework lock-in */
+:root{--s21-x:50%;--s21-y:20%}
+.s21,.card,.page-card,.wp-card,.set-home-card,.box,.result,.out-sec,.item-row{position:relative;isolation:isolate}
+.s21::before,.card::before,.page-card::before,.wp-card::before,.set-home-card::before,.box::before,.result::before,.out-sec::before,.item-row::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:radial-gradient(260px circle at var(--s21-x) var(--s21-y),rgba(255,255,255,.075),transparent 68%);opacity:0;transition:opacity .25s ease;z-index:-1}
+.s21:hover::before,.card:hover::before,.page-card:hover::before,.wp-card:hover::before,.set-home-card:hover::before,.box:hover::before,.result:hover::before,.out-sec:hover::before,.item-row:hover::before{opacity:1}
+.glow-line{position:relative}.glow-line::after{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(232,184,77,.55),rgba(110,168,255,.45),transparent);opacity:.55}
+.sheen{position:relative;overflow:hidden}.sheen::after{content:"";position:absolute;inset:-120% 0;background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.055) 50%,transparent 60%);transform:translateX(-60%);transition:transform .8s ease;pointer-events:none}.sheen:hover::after{transform:translateX(60%)}
+@media(prefers-reduced-motion:reduce){.s21::before,.card::before,.page-card::before,.wp-card::before,.set-home-card::before,.box::before,.result::before,.out-sec::before,.item-row::before{transition:none}}

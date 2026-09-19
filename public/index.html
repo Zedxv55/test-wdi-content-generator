@@ -1,64 +1,193 @@
 <!doctype html>
 <html lang="th">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DIAMOND WDI — AI Content & Short Video Studio</title><link rel="stylesheet" href="style.css?v=20260911e"><link rel="stylesheet" href="ux.css?v=20260911b"><link rel="stylesheet" href="studio.css?v=phaseE2"><link rel="stylesheet" href="design-system.css?v=p1"><link rel="stylesheet" href="motion.css?v=p1"></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>DIAMOND WDI · Product Studio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="_shared.css">
+<link rel="stylesheet" href="studio.css?v=phaseE2">
+<link rel="stylesheet" href="design-system.css?v=p1">
+<link rel="stylesheet" href="motion.css?v=p1">
+<link rel="stylesheet" href="_base.css">
+<link rel="stylesheet" href="studio21-lite.css?v=1">
+</head>
 <body>
-<header><button id="navToggle" onclick="toggleNav()" aria-label="เปิดเมนูสินค้า">☰</button><div class="brand"><img class="brand-logo" src="diamond-logo.png" alt="DIAMOND"><div><strong>DIAMOND</strong><span> WDI AI CONTENT STUDIO</span></div></div><div class="gsearch"><input id="gSearch" placeholder="ค้นหา สินค้า / Set / รถ..." autocomplete="off" aria-label="ค้นหาทั้งหมด"><div id="gResults" hidden></div></div><div class="header-status"><div id="health" class="status" title="system status">● Online</div><div id="dataSource" class="data-source"><i></i> ตรวจฐานข้อมูล...</div><button class="hbtn" onclick="syncWdi()" title="ซิงค์ข้อมูล WDI">↻ Sync</button><button class="hbtn primary" onclick="toggleAssistant()" aria-label="เปิด AI Assistant">🤖 Assistant</button><details id="systemBox"><summary>System</summary><div class="sysdrop" id="systemDrop">กำลังโหลดข้อมูลระบบ...</div></details></div></header>
-<div class="shell">
-<nav id="rail" aria-label="studio navigation">
-<button data-mode="product" onclick="setMode('product')" title="Product"><span class="ri">📦</span><span class="rl">Product</span></button>
-<button data-mode="set" onclick="setMode('set')" title="Set Builder"><span class="ri">🎬</span><span class="rl">Set</span></button>
-<button data-mode="map" onclick="setMode('map')" title="Vehicle Map"><span class="ri">🗺</span><span class="rl">Map</span></button>
-<button data-mode="image" onclick="setMode('image')" title="Image Studio"><span class="ri">🖼</span><span class="rl">Image</span></button>
-<button data-mode="dist" onclick="navDist()" title="Distribution"><span class="ri">📣</span><span class="rl">Dist</span></button>
-<button data-mode="pub" onclick="navPub()" title="Publishing"><span class="ri">📅</span><span class="rl">Pub</span></button>
-</nav>
-<div class="maincol">
-<div id="nextBar" hidden></div>
-<div id="workspace">
-<section class="toolbar" aria-label="ตัวกรอง"><select id="category" aria-label="หมวดหมู่"><option value="">ทุกหมวดหมู่</option></select><select id="brand" aria-label="ยี่ห้อรถ"><option value="">ทุกยี่ห้อรถ</option></select><select id="model" aria-label="รุ่นรถ"><option value="">ทุกรุ่นรถ</option></select><select id="statusFilter" aria-label="สถานะงาน" onchange="loadProducts()"><option value="">ทุกสถานะ</option><option value="NOT_STARTED">○ ยังไม่ทำ</option><option value="DOING">🔵 กำลังทำ</option><option value="DONE">✓ Generate แล้ว</option><option value="QC">◐ รอ QC/ต้องแก้</option><option value="PASSED">✓✓ QC ผ่าน/พร้อมลง</option><option value="PUBLISHED">🚀 ลงแล้ว</option><option value="ERROR">✕ มีปัญหา</option></select><button onclick="loadProducts()">ค้นหา</button></section>
-<div id="activityBar"><span class="dot"></span><span id="activityText">กำลังทำงาน...</span><span id="activitySecs"></span></div>
-<section id="dashstrip" aria-label="งานวันนี้"><div class="empty-state" style="padding:12px">กำลังโหลดงานวันนี้...</div></section>
-<section class="workspace-main">
-<aside class="panel products-panel" aria-label="งานและสินค้า"><div class="panel-title"><h2>งาน / สินค้า</h2><span id="count"></span></div><div class="navsearch"><input id="search" placeholder="ค้นหารหัส / ชื่อสินค้า" onkeydown="if(event.key==='Enter')loadProducts()" aria-label="ค้นหาสินค้า"><button class="secondary" onclick="loadProducts()" aria-label="ค้นหา">🔍</button></div><div id="statusChips" role="tablist" aria-label="กรองตามสถานะ"></div><div id="products">กำลังโหลด...</div></aside>
-<article class="panel editor" aria-label="พื้นที่ทำงานหลัก"><div id="detail" class="empty"><b>เริ่มงานโดยเลือกสินค้าจากด้านซ้าย</b><br><span>เลือกสินค้า → เลือกแนวคลิป → กดสร้าง</span></div></article>
-</section>
-<section id="setWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🎬 Set Builder</h2><span id="setCount"></span></div><div id="setBody" style="padding:14px 16px"></div></div></section>
-<section id="mapWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🗺 Vehicle Product Map</h2><span>ค้นดูสินค้าของ WDI ตามรุ่นรถ</span></div><div id="mapBody" style="padding:14px 16px"></div></div></section>
-<section id="imgWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>🖼 Image Studio</h2><span id="imgCtx">DNA → Storyboard → Image → Flow</span></div><div id="imgBody" style="padding:14px 16px"></div></div></section>
-<section id="distWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>📣 Distribution</h2><span id="distCtx"></span></div><div id="distBody" style="padding:14px 16px"></div></div></section>
-<section id="pubWorkspace" hidden style="margin-top:4px"><div class="panel"><div class="panel-title"><h2>📅 Publishing</h2><span id="pubCtx"></span></div><div id="pubBody" style="padding:14px 16px"></div></div></section>
+<header class="page-header">
+  <a href="index.html" class="brand" aria-label="DIAMOND WDI Product Studio">
+    <img src="diamond-logo.png" alt="DIAMOND">
+    <span><strong>DIAMOND</strong><small>WDI AI CONTENT STUDIO</small></span>
+  </a>
+  <div class="hsearch">
+    <input id="gSearch" type="search" placeholder="ค้นหาทั่วไป: รหัส / ชื่อสินค้า / ชุด / รุ่นรถ..." aria-label="ค้นหาทั่วไป" autocomplete="off">
+    <div id="gResults" class="hidden absolute left-0 right-0 z-50 mt-2 rounded-xl overflow-auto card" style="max-height:50vh" role="listbox"></div>
+  </div>
+  <div class="flex items-center gap-2 ml-auto">
+    <span class="meta hidden md:block" id="sysDiag">System · …</span>
+    <span id="health" class="status-badge" data-status="IN_PROGRESS" title="สถานะเซิร์ฟเวอร์">● …</span>
+    <button class="btn-secondary" onclick="syncWdi()" aria-label="ซิงค์ข้อมูล WDI">🔄 Sync</button>
+    <button class="btn-primary" onclick="toggleAssistant()" aria-label="เปิด AI Assistant">🤖 AI</button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="rail" id="rail" aria-label="เมนูหลัก">
+    <a class="nav-item active" href="index.html" aria-label="Product Studio"><span>📦</span>Products</a>
+    <a class="nav-item" href="set.html" aria-label="Set Builder"><span>🎬</span>Set</a>
+    <a class="nav-item" href="map.html" aria-label="Vehicle Map"><span>🗺</span>Map</a>
+    <a class="nav-item" href="image.html" aria-label="Image Studio"><span>🖼</span>Image</a>
+    <a class="nav-item" href="dist.html" aria-label="Distribution"><span>📣</span>Dist</a>
+    <a class="nav-item" href="pub.html" aria-label="Publishing"><span>📅</span>Pub</a>
+  </nav>
+
+  <main class="main flex flex-col gap-3">
+    <!-- 1. dashboard strip -->
+    <section class="card px-4 py-3 flex flex-wrap items-center gap-3" aria-label="ภาพรวมงาน">
+      <div id="dashstrip" class="flex flex-wrap items-center gap-2 text-[13px]"><div class="loading" style="padding:8px">กำลังโหลดภาพรวม…</div></div>
+    </section>
+
+    <!-- 2. toolbar -->
+    <section class="card px-4 py-3 flex flex-wrap items-center gap-2" aria-label="ตัวกรองสินค้า">
+      <select id="category" aria-label="หมวดหมู่" onchange="loadProducts()"><option value="">ทุกหมวดหมู่</option></select>
+      <select id="brand" aria-label="ยี่ห้อรถ" onchange="loadProducts()"><option value="">ทุกยี่ห้อรถ</option></select>
+      <select id="model" aria-label="รุ่นรถ" onchange="loadProducts()"><option value="">ทุกรุ่นรถ</option></select>
+      <select id="statusFilter" aria-label="สถานะงาน" onchange="loadProducts()"><option value="">ทุกสถานะ</option></select>
+      <input id="search" type="search" placeholder="ค้นหารหัส / ชื่อสินค้า…" aria-label="ค้นหาสินค้า" onkeydown="if(event.key==='Enter')loadProducts()" class="flex-1" style="min-width:180px">
+      <button onclick="loadProducts()" class="btn-primary" aria-label="ค้นหา">ค้นหา</button>
+      <small id="dataSource" class="meta w-full"></small>
+    </section>
+
+    <!-- 3. status chips + 4. workspace -->
+    <div id="statusChips" class="flex gap-2 flex-wrap items-center px-1" aria-label="กรองตามสถานะ"></div>
+
+    <div class="grid gap-3 items-start" style="grid-template-columns:300px minmax(0,1fr)">
+      <!-- LEFT: product list -->
+      <aside class="card sticky flex flex-col" style="top:70px;max-height:calc(100vh - 90px)" aria-label="รายการสินค้า">
+        <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:var(--border)">
+          <h2 class="meta">สินค้า</h2>
+          <span id="count" class="meta"></span>
+        </div>
+        <div id="products" class="overflow-auto flex-1" style="scrollbar-width:thin;min-height:200px">
+          <div class="loading">กำลังโหลดสินค้า…</div>
+        </div>
+        <div id="durSeg" class="border-t" style="border-color:var(--border)" aria-label="ความยาวคลิป"></div>
+      </aside>
+
+      <!-- RIGHT: editor -->
+      <article id="detail" class="card p-6" style="min-height:70vh" aria-live="polite">
+        <div class="empty-state">
+          <div class="icon">📦</div>
+          <b style="color:var(--text)">เลือกสินค้าจากด้านซ้าย</b>
+          <p>เลือกสินค้า → เลือกแนวคลิป → กดสร้าง Content Plan</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2 px-1">
+      <div id="qprompts" class="flex flex-wrap gap-2" aria-label="คำถามด่วน"></div>
+      <span class="flex-1"></span>
+      <small id="qSuggest" class="meta"></small>
+    </div>
+  </main>
 </div>
+
+<!-- activity bar -->
+<div id="activityBar" class="hidden items-center gap-3 px-4 py-2.5 rounded-xl text-[12px] fixed left-1/2 -translate-x-1/2 bottom-5 z-[95] card" role="status">
+  <span class="w-2 h-2 rounded-full shrink-0" style="background:var(--gold);box-shadow:0 0 0 5px rgba(232,184,77,.15);animation:pulse 1s infinite"></span>
+  <span id="activityText">กำลังทำงาน…</span>
+  <span id="activitySecs" class="ml-auto font-bold" style="color:var(--gold)"></span>
 </div>
+
+<!-- busy overlay -->
+<div id="pageBusy" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(5,7,11,.85);backdrop-filter:blur(4px)" role="alert">
+  <div class="card p-6 text-center" style="min-width:280px">
+    <div class="w-9 h-9 rounded-full border-2 mx-auto mb-4 loading" style="border-color:#2a3446;border-top-color:var(--gold);padding:0" aria-hidden="true"></div>
+    <b id="busyTitle" class="block text-[14px]">กำลังทำงาน…</b>
+    <small id="busySecs" class="block mt-2 text-[12px] font-bold" style="color:var(--gold)">กรุณารอสักครู่</small>
+  </div>
 </div>
-<div id="pageBusy"><div class="busy-card"><div class="busy-spinner"></div><b id="busyTitle">กำลังทำงาน...</b><small id="busySecs">กรุณารอสักครู่ ระบบกำลังประมวลผล</small></div></div>
-<div id="navScrim" onclick="toggleNav()"></div>
-<div id="truthModal" role="dialog" aria-modal="true" aria-label="ข้อมูลสินค้า" onclick="if(event.target===this)closeTruth()"><div class="truth-card"><div class="drawer-head" style="border:0;padding:0 0 10px">📋 ข้อมูลสินค้าทั้งหมด<button class="hbtn" onclick="closeTruth()" aria-label="ปิด">✕</button></div><div id="truthBody"></div></div></div>
-<div id="sheetModal" role="dialog" aria-modal="true" aria-label="Product Sheet" onclick="if(event.target===this)closeSheet()"><div class="truth-card"><div class="drawer-head" style="border:0;padding:0 0 10px">🪪 Product Sheet<button class="hbtn" onclick="closeSheet()" aria-label="ปิด">✕</button></div><div id="sheetBody"></div></div></div>
-<div id="creativeScrim" onclick="closeCreative()"></div>
-<aside id="creativeDrawer" role="dialog" aria-modal="true" aria-label="เลือกแนวคลิป">
-<div class="drawer-head">🎬 เลือกแนวคลิป<button class="hbtn" onclick="closeCreative()" aria-label="ปิด">✕</button></div>
-<div class="drawer-search"><input id="vSearch" placeholder="ค้นหาแนว เช่น 360 / FAQ / LINE" oninput="vFilter=this.value.toLowerCase();renderVChips()" aria-label="ค้นหาแนวคลิป"></div>
-<div id="vchips" class="vgrid"></div>
-<div id="durSeg"></div>
+
+<!-- drawers & modals -->
+<aside id="assistantPanel" class="drawer" aria-label="AI Assistant">
+  <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color:var(--border)">
+    <b class="flex-1">🤖 AI Assistant</b>
+    <button class="btn-secondary" onclick="toggleAssistant()" aria-label="ปิด AI Assistant">✕</button>
+  </div>
+  <div id="assistantAns" class="flex-1 overflow-auto p-4 text-[13px]" style="line-height:1.7"></div>
+  <div class="p-3 border-t flex gap-2" style="border-color:var(--border)">
+    <input id="assistantQ" type="text" placeholder="ถามเกี่ยวกับงาน/สินค้า…" aria-label="คำถามถึง AI" class="flex-1" onkeydown="if(event.key==='Enter')askAssistant()">
+    <button class="btn-primary" onclick="askAssistant()" aria-label="ส่งคำถาม">ส่ง</button>
+  </div>
 </aside>
-<div id="drawerScrim" onclick="toggleAssistant()"></div>
-<aside id="assistantPanel" role="dialog" aria-modal="true" aria-label="AI Assistant">
-<div class="drawer-head">🤖 WDI Assistant <small style="opacity:.6;font-weight:400">ตอบจาก Production DB</small><button class="hbtn" onclick="toggleAssistant()" aria-label="ปิด">✕</button></div>
-<div class="qprompts" id="qprompts"></div>
-<div id="assistantAns" style="padding:12px 14px;overflow:auto;white-space:pre-wrap;font-size:13px;flex:1;min-height:120px">ถามได้เช่น “04-60610L ทำถึงไหนแล้ว” / “ตัวไหนยังไม่ทำ” / “วันนี้ควรทำตัวไหนต่อ”</div>
-<div style="display:flex;gap:6px;padding:10px 12px;border-top:1px solid #2a3340"><input id="assistantQ" placeholder="ถามสถานะงาน..." style="flex:1" onkeydown="if(event.key==='Enter')askAssistant()" aria-label="ถามสถานะงาน"><button class="secondary" onclick="askAssistant()">ถาม</button></div>
-<div id="sysDiag" style="padding:8px 14px;border-top:1px solid #232b36;font-size:11px;color:#8b95a4"></div>
+
+<aside id="creativeDrawer" class="drawer" style="width:min(460px,94vw)" aria-label="เลือกแนวคลิป">
+  <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color:var(--border)">
+    <b class="flex-1">🎬 แนวคลิป (V-Series)</b>
+    <button class="btn-secondary" onclick="closeCreative()" aria-label="ปิด">✕</button>
+  </div>
+  <div class="p-4 overflow-auto flex-1 flex flex-col gap-3">
+    <input id="vSearch" type="search" placeholder="ค้นหาแนวคลิป…" aria-label="ค้นหาแนวคลิป" oninput="vFilter=this.value;renderVChips()">
+    <div id="vchips" class="flex flex-col gap-2"><div class="loading">กำลังโหลดแนวคลิป…</div></div>
+  </div>
 </aside>
-<div id="histScrim" onclick="closeHistory()"></div>
-<div id="sceneScrim" onclick="closeSceneEditor()"></div>
-<aside id="sceneDrawer" role="dialog" aria-modal="true" aria-label="Scene editor">
-<div class="drawer-head">🎬 Scene Editor<button class="hbtn" onclick="closeSceneEditor()" aria-label="ปิด">✕</button></div>
-<div id="sceneBody" style="padding:12px 14px;overflow:auto"></div>
+<div id="creativeScrim" class="drawer-scrim" onclick="closeCreative()"></div>
+
+<aside id="histDrawer" class="drawer" aria-label="ประวัติงาน">
+  <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color:var(--border)">
+    <b class="flex-1">🕘 ประวัติงาน</b>
+    <button class="btn-secondary" onclick="closeHistory()" aria-label="ปิดประวัติ">✕</button>
+  </div>
+  <div id="histBody" class="p-4 overflow-auto flex-1"></div>
 </aside>
-<aside id="histDrawer" role="dialog" aria-modal="true" aria-label="ประวัติงาน">
-<div class="drawer-head">🕘 ประวัติงาน<button class="hbtn" onclick="closeHistory()" aria-label="ปิด">✕</button></div>
-<div id="histBody" style="padding:12px 14px;overflow:auto"></div>
+<div id="histScrim" class="drawer-scrim" onclick="closeHistory()"></div>
+
+<aside id="sceneDrawer" class="drawer" style="width:min(430px,94vw)" aria-label="Scene Editor">
+  <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color:var(--border)">
+    <b class="flex-1">🎬 Scene Editor</b>
+    <button class="btn-secondary" onclick="closeSceneEditor()" aria-label="ปิด Scene Editor">✕</button>
+  </div>
+  <div id="sceneBody" class="p-4 overflow-auto flex-1"></div>
 </aside>
-<script src="app.js?v=20260911e"></script><script src="ad-features.js?v=20260911d"></script><script src="dist-studio.js?v=1"></script><script src="set-builder.js?v=1"></script><script src="vehicle-map.js?v=1"></script><script src="image-renderer.js?v=1"></script><script src="dna-board.js?v=1"></script><script src="image-flow.js?v=1"></script><script src="ui-enhance.js?v=20260911b"></script>
-</body></html>
+<div id="sceneScrim" class="drawer-scrim" onclick="closeSceneEditor()"></div>
+<div id="drawerScrim" class="drawer-scrim" onclick="toggleAssistant()"></div>
+
+<div id="truthModal" class="fixed inset-0 z-[98] hidden items-center justify-center p-4" style="background:rgba(0,0,0,.68)" onclick="if(event.target===this)closeTruth()" role="dialog" aria-label="ข้อมูลจริงสินค้า">
+  <div class="card w-full max-w-2xl p-5" style="max-height:85vh;overflow:auto">
+    <div class="flex items-center mb-3"><b class="flex-1">🔍 Product Truth</b><button class="btn-secondary" onclick="closeTruth()" aria-label="ปิด">✕</button></div>
+    <div id="truthBody"></div>
+  </div>
+</div>
+<div id="sheetModal" class="fixed inset-0 z-[98] hidden items-center justify-center p-4" style="background:rgba(0,0,0,.68)" onclick="if(event.target===this)closeSheet()" role="dialog" aria-label="Product Sheet">
+  <div class="card w-full max-w-2xl p-5" style="max-height:85vh;overflow:auto">
+    <div class="flex items-center mb-3"><b class="flex-1">🪪 Product Sheet</b><button class="btn-secondary" onclick="closeSheet()" aria-label="ปิด">✕</button></div>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script src="app.js?v=20260911e"></script>
+<script src="ad-features.js?v=20260911d"></script>
+<script src="dist-studio.js?v=1"></script>
+<script src="set-builder.js?v=1"></script>
+<script src="vehicle-map.js?v=1"></script>
+<script src="image-renderer.js?v=1"></script>
+<script src="dna-board.js?v=1"></script>
+<script src="image-flow.js?v=1"></script>
+<script src="ui-enhance.js?v=20260911b"></script>
+<script>
+/* multi-page navigation adapters (RULE 5 — real navigation, context-preserving) */
+function ctxCode(){try{return localStorage.getItem('wdi:selectedProduct')||new URLSearchParams(location.search).get('code')||''}catch(e){return ''}}
+function setMode(m){var map={product:'index.html',set:'set.html',map:'map.html',image:'image.html',dist:'dist.html',pub:'pub.html'};var c=ctxCode();location.href=(map[m]||'index.html')+(c?'?code='+encodeURIComponent(c):'')}
+function navDist(){var c=ctxCode();location.href='dist.html'+(c?'?code='+encodeURIComponent(c):'')}
+function navPub(){location.href='pub.html'}
+function toggleNav(){document.body.classList.toggle('nav-open')}
+</script>
+<script>
+/* ?code= deep-link auto-select (variant-aware: master uses pair codes) */
+document.addEventListener('DOMContentLoaded',()=>{const c=new URLSearchParams(location.search).get('code');if(!c)return;const matchCode=x=>{const v=String((x&&x['Product Code'])||'');return v===c||v.split('/').map(s=>s.trim()).includes(c)};let n=0;const t=setInterval(async()=>{try{if(typeof loadProducts!=='function'||!document.getElementById('search')){clearInterval(t);return}if(n++===0){document.getElementById('search').value=c;await loadProducts()}const items_=(typeof items!=='undefined'&&Array.isArray(items))?items:[];const i=items_.findIndex(matchCode);if(i>=0){clearInterval(t);const btns=document.querySelectorAll('#products .item:not(.load-more)');if(btns[i]&&typeof selectProduct==='function')selectProduct(i,btns[i])}else if(n>6){clearInterval(t)}}catch(e){clearInterval(t)}},600)});
+</script>
+<script src="studio21-lite.js?v=1"></script>
+</body>
+</html>

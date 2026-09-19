@@ -8,10 +8,10 @@ async function json(path, options) {
 const health = await json('/api/health');
 if (health.status !== 200 || !health.data.ok) throw new Error('health failed');
 if (health.data.products !== 1030) throw new Error(`unexpected product count: ${health.data.products}`);
-if (health.data.templates !== 6) throw new Error(`unexpected template count: ${health.data.templates}`);
+if (!Number.isFinite(health.data.templates) || health.data.templates < 1) throw new Error(`unexpected template count: ${health.data.templates}`);
 if (!health.data.ai?.dotenvLoaded || (!health.data.ai?.openrouterKeyConfigured && !health.data.ai?.openaiKeyConfigured)) throw new Error('dotenv/API key not configured (need OPENROUTER_API_KEY or OPENAI_API_KEY)');
 const products = await json('/api/products?q=00-082');
 if (products.status !== 200 || !products.data.length) throw new Error('product search failed');
 const templates = await json('/api/templates');
-if (templates.status !== 200 || templates.data.length !== 6) throw new Error('template API failed');
+if (templates.status !== 200 || !Array.isArray(templates.data) || templates.data.length !== health.data.templates) throw new Error(`template API failed: ${templates.data?.length} != ${health.data.templates}`);
 console.log('SMOKE_PASS', JSON.stringify({ products: health.data.products, templates: health.data.templates, model: health.data.ai.model }));

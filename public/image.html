@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>DIAMOND WDI · Image Studio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="_shared.css">
+<link rel="stylesheet" href="_base.css">
+<link rel="stylesheet" href="studio21-lite.css?v=1">
+<link rel="stylesheet" href="page-shell.css">
+<link rel="stylesheet" href="workspace-pages.css?v=1">
+</head>
+<body>
+<header class="page-header">
+  <a href="index.html" class="brand" aria-label="DIAMOND WDI home">
+    <img src="diamond-logo.png" alt="DIAMOND">
+    <span><strong>DIAMOND</strong><small>WDI AI CONTENT STUDIO</small></span>
+  </a>
+  <div class="hsearch flex justify-center">
+    <span class="status-badge" data-status="GENERATED">Current product · <b id="contextCode">—</b></span>
+  </div>
+  <div class="flex items-center gap-2 ml-auto">
+    <span id="health" class="status-badge" data-status="IN_PROGRESS">● …</span>
+    <a href="index.html" class="btn-secondary">Products</a>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="rail" aria-label="เมนูหลัก">
+    <a class="nav-item" href="index.html" aria-label="Product Studio"><span>📦</span>Products</a>
+    <a class="nav-item" href="set.html" aria-label="Set Builder"><span>🎬</span>Set</a>
+    <a class="nav-item" href="map.html" aria-label="Vehicle Map"><span>🗺</span>Map</a>
+    <a class="nav-item active" href="image.html" aria-label="Image Studio"><span>🖼</span>Image</a>
+    <a class="nav-item" href="dist.html" aria-label="Distribution"><span>📣</span>Dist</a>
+    <a class="nav-item" href="pub.html" aria-label="Publishing"><span>📅</span>Pub</a>
+  </nav>
+
+  <main class="main flex flex-col gap-3">
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <h1 class="text-[26px] font-black">🖼 Image Studio</h1>
+        <p class="meta mt-1">Product DNA → Brief → Storyboard → Image → Google Flow</p>
+      </div>
+      <span class="flex-1"></span>
+      <span class="status-badge" data-status="GENERATED">FREE HTML / PAID AI OPT-IN</span>
+    </div>
+    <section class="card p-5" aria-live="polite">
+      <div id="imgBody"><div class="loading">กำลังโหลด Image Studio…</div></div>
+    </section>
+  </main>
+</div>
+
+<aside id="sceneDrawer" class="drawer" style="width:min(430px,94vw)" aria-label="Scene Editor">
+  <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color:var(--border)">
+    <b class="flex-1">🎬 Scene Editor</b>
+    <button class="btn-secondary" onclick="closeSceneEditor()" aria-label="ปิด Scene Editor">✕</button>
+  </div>
+  <div id="sceneBody" class="p-4 overflow-auto flex-1"></div>
+</aside>
+<div id="sceneScrim" class="drawer-scrim" onclick="closeSceneEditor()"></div>
+
+<div id="sheetModal" class="fixed inset-0 z-[98] hidden items-center justify-center p-4" style="background:rgba(0,0,0,.68)" onclick="if(event.target===this)closeSheet()" role="dialog" aria-label="Product Sheet">
+  <div class="card w-full max-w-2xl p-5" style="max-height:85vh;overflow:auto">
+    <div class="flex items-center mb-3"><b class="flex-1">🪪 Product Sheet</b><button class="btn-secondary" onclick="closeSheet()" aria-label="ปิด">✕</button></div>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script src="page-common.js?v=3"></script>
+<script src="dna-board.js?v=1"></script>
+<script src="image-renderer.js?v=1"></script>
+<script src="image-flow.js?v=1"></script>
+<script>
+function ctxCode(){try{return localStorage.getItem('wdi:selectedProduct')||new URLSearchParams(location.search).get('code')||''}catch(e){return ''}}
+function setMode(m){var map={product:'index.html',set:'set.html',map:'map.html',image:'image.html',dist:'dist.html',pub:'pub.html'};var c=ctxCode();location.href=(map[m]||'index.html')+(c?'?code='+encodeURIComponent(c):'')}
+function navDist(){var c=ctxCode();location.href='dist.html'+(c?'?code='+encodeURIComponent(c):'')}
+function navPub(){location.href='pub.html'}
+function toggleNav(){document.body.classList.toggle('nav-open')}
+/* product-scoped drawers live on Product Studio — delegate with context */
+function goIndex(){var c=ctxCode();location.href='index.html'+(c?'?code='+encodeURIComponent(c):'')}
+function toggleAssistant(){goIndex()}
+function openCreative(){goIndex()}
+function closeCreative(){goIndex()}
+function openHistory(){goIndex()}
+function closeHistory(){goIndex()}
+function openTruth(){goIndex()}
+function closeTruth(){goIndex()}
+</script>
+<script>document.addEventListener('DOMContentLoaded',async()=>{const p=await initPageCommon();if(p){const cc=document.getElementById('contextCode');if(cc)cc.textContent=p['Product Code']||'';renderImageHome()}else document.getElementById('imgBody').innerHTML='<div class="empty-state"><div class="icon">🖼</div><b>ยังไม่ได้เลือกสินค้า</b><p>ไปที่ Product Studio แล้วเลือกสินค้าก่อน</p><button class="btn-primary mt-4" onclick="goProduct()">เปิด Product Studio</button></div>'});</script>
+<script src="studio21-lite.js?v=1"></script>
+</body>
+</html>

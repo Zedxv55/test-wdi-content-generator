@@ -4,18 +4,24 @@ let mapState = { brand: '', model: '', data: null, tab: 'map', selected: [], q: 
 
 async function renderMapHome() {
   const el = $('mapBody');
-  el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-  <select id="mapBrand" aria-label="ยี่ห้อรถ"><option value="">— ยี่ห้อ —</option></select>
-  <select id="mapModel" aria-label="รุ่นรถ"><option value="">— รุ่น —</option></select>
-  <button class="generate" onclick="mapFetch()">ค้นจาก WDI</button>
-  <button class="secondary" onclick="mapFetch(true)">Refresh</button></div>
-  <div id="mapView"><div class="empty-state">เลือกยี่ห้อ → รุ่น → ค้นจาก WDI<br><small>ข้อมูลรถและสินค้ามาจากเว็บ WDI โดยตรง ไม่ hard-code</small></div></div>`;
+  el.innerHTML = `
+    <div class="wp-toolbar">
+      <select id="mapBrand" class="wp-select grow" aria-label="ยี่ห้อรถ"><option value="">เลือกยี่ห้อรถ</option></select>
+      <select id="mapModel" class="wp-select grow" aria-label="รุ่นรถ"><option value="">เลือกรุ่นรถ</option></select>
+      <button class="generate" onclick="mapFetch()">ค้นจาก WDI</button>
+      <button class="secondary" onclick="mapFetch(true)">รีเฟรช</button>
+    </div>
+    <div id="mapView" class="map-shell-grid">
+      <section class="map-col"><div class="wp-card"><div class="wp-card-head"><h2>Vehicle</h2><span>Brand</span></div><div class="wp-card-body" id="mapBrandInfo"><div class="wp-empty"><div class="wp-icon">🚙</div><b>เลือกยี่ห้อ</b>เพื่อเริ่มค้นหา</div></div></div></section>
+      <section class="map-col"><div class="wp-card"><div class="wp-card-head"><h2>Model</h2><span>WDI</span></div><div class="wp-card-body" id="mapModelInfo"><div class="wp-empty"><div class="wp-icon">◈</div><b>เลือกรุ่น</b>แล้วค้นจาก WDI</div></div></div></section>
+      <section class="map-col"><div class="wp-card"><div class="wp-card-head"><h2>Products</h2><span id="mapCount">—</span></div><div class="map-scroll" id="mapProductInfo"><div class="wp-empty"><div class="wp-icon">📦</div><b>ยังไม่มีสินค้า</b>เลือก Vehicle → Model → ค้นจาก WDI</div></div></div></section>
+    </div>`;
   try {
     const d = await fetch('/api/vehicle/brands').then(r => r.json());
-    $('mapBrand').innerHTML = '<option value="">— ยี่ห้อ —</option>' + (d.brands || []).map(b => `<option>${esc(b.brand)}</option>`).join('');
+    const brands = d.brands || [];
+    $('mapBrand').innerHTML = '<option value="">เลือกยี่ห้อรถ ('+brands.length+')</option>' + brands.map(b => `<option value="${esc(b.brand)}">${esc(b.brand)}</option>`).join('');
     $('mapBrand').onchange = mapBrandChange;
-    $('mapModel').onchange = () => {};
-  } catch (e) { $('mapView').innerHTML = `<div class="error">โหลดยี่ห้อไม่สำเร็จ: ${esc(e.message || '')}</div>`; }
+  } catch (e) { $('mapView').innerHTML = `<div class="error">โหลด Vehicle Map ไม่สำเร็จ: ${esc(e.message || '')}</div>`; }
 }
 async function mapBrandChange() {
   const b = $('mapBrand').value;
@@ -66,6 +72,7 @@ function mapFitBadge(it) {
 function renderMapView() {
   const el = $('mapView'), d = mapState.data;
   if (!d) return;
+  el.classList.remove('map-shell-grid');
   const v = d.vehicle;
   const total = d.groups.reduce((a, g) => a + g.count, 0);
   const verified = d.groups.flatMap(g => g.items).filter(i => i.fit.status === 'verified').length;
@@ -154,12 +161,8 @@ function applyMapTransform() {
   if (el) el.style.transform = `translate(${mapState.panX}px,${mapState.panY}px) scale(${mapState.zoom})`;
 }
 function mapOpenSheet(code) {
-  if (typeof openSheetDrawer === 'function') {
-    fetch('/api/sheet/detail?code=' + encodeURIComponent(code)).then(r => r.json()).then(d => {
-      if (d.error) { showToast('ยังไม่มี sheet — สร้างที่ Product mode ก่อน', false); return; }
-      showToast(`Sheet v${d.sheet.version} ${d.sheet.status}`);
-    }).catch(() => showToast('เปิด sheet ไม่สำเร็จ', false));
-  }
+  // Sheet lives on the Product page (section 02). Take the user there with context.
+  location.href = 'index.html?code=' + encodeURIComponent(code || '');
 }
 async function mapSelectAll(all) {
   const groups = mapFilteredGroups();
@@ -180,8 +183,7 @@ async function mapCreateSet() {
     if (r.error) throw new Error(r.error);
     const a = await fetch(`/api/sets/${r.set.id}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codes }) }).then(r => r.json());
     showToast(`สร้าง Set + ${a.added} SKU ✓`);
-    setMode('set');
-    setTimeout(() => openSet(r.set.id), 150);
+    location.href = 'set.html?set=' + r.set.id;
   } catch (e) { showToast(e.message || '', false); }
 }
 async function mapExport(btn) {

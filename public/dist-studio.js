@@ -19,20 +19,32 @@ function openDistStudio() {
   renderDistStudio();
 }
 function distCatCode() { return (($('catCode') || {}).value || selectedCatCode || ''); }
+async function distPost(url, body, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms || 240000);
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal });
+    return await r.json();
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('AI ตอบช้าเกินกำหนด — กด Generate ใหม่อีกครั้ง');
+    throw e;
+  } finally { clearTimeout(t); }
+}
 
 function renderDistStudio() {
+  if (!window._dist) window._dist = { code: ((window.current || {})['Product Code']) || '', angle: 'A', plan: null, versions: [], ab: null };
   const o = (typeof setModeCur !== 'undefined' && setModeCur === 'dist' && $('distBody')) ? $('distBody') : $('output'), st = window._dist;
-  const p = current, sheet = window.lastSheet;
+  const p = window.current, sheet = window.lastSheet;
   const platTabs = Object.entries(DIST_PLATS).map(([k, v]) => {
     const dot = st.plan ? distPlatDot(k) : '○';
     return `<button class="secondary" style="${k === distPlat ? 'border-color:#ffd76a;color:#ffd76a' : ''}" onclick="distSwitchPlat('${k}')">${dot} ${v.name}</button>`;
   }).join('');
   o.innerHTML = `<section class="result"><div class="result-head"><div><h2>Content Distribution Studio</h2>
   <small class="result-sub">สร้างข้อความพร้อมโพสต์จากข้อมูลสินค้าจริง โดยปรับรูปแบบให้เหมาะกับแต่ละแพลตฟอร์ม</small></div>
-  <div style="display:flex;gap:7px"><button class="secondary ${distTab === 'content' ? '' : ''}" onclick="distSwitchTab('content')">Content</button><button class="secondary" onclick="distSwitchTab('publishing')">Publishing</button><button class="secondary" onclick="distSwitchTab('poster')">Poster</button></div></div>
+  <div style="display:flex;gap:7px">${['content', 'publishing', 'poster'].map(t => `<button class="secondary" style="${distTab === t ? 'border-color:#ffd76a;color:#ffd76a' : ''}" onclick="distSwitchTab('${t}')">${t === 'content' ? 'Content' : t === 'publishing' ? 'Publishing' : 'Poster'}</button>`).join('')}</div></div>
   <div id="distBody"></div></section>`;
   if (distTab === 'publishing') { renderDistPublishing(); return; }
-  if (distTab === 'poster') { renderAdPoster(); return; }
+  if (distTab === 'poster') { const db = $('distBody'); if (db) db.innerHTML = '<div id="adTabBody"></div>'; try { renderAdPoster(); } catch (e) { if (db) db.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; } return; }
   const sheetOk = sheet && sheet.status === 'VERIFIED';
   $('distBody').innerHTML = `
   <div class="box"><div class="box-title"><h3>${esc(p['Product Code'] || '')} · ${esc(p['Product Name (TH)'] || p['Product Name (EN)'] || '')}</h3></div>
@@ -59,10 +71,10 @@ async function distGenerate(btn, platforms, angleOv) {
   if (btn) { btn.disabled = true; }
   if (body) body.innerHTML = '<div class="loading">กำลังสร้าง content ตามมุมขาย + กฎแต่ละแพลตฟอร์ม...</div>';
   try {
-    const r = await fetch('/api/content-distribution', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: current, categoryCode: distCatCode(), angle, platforms }) }).then(r => r.json());
+    const r = await distPost('/api/content-distribution', { product: current, categoryCode: distCatCode(), angle, platforms });
     if (!r.ok && !r.plan) throw new Error(r.error || 'สร้างไม่สำเร็จ');
     st.plan = r.plan; st.versions = r.versions || [];
-    renderDistPlan(); loadDashboard();
+    renderDistPlan(); if (typeof loadDashboard === 'function') loadDashboard();
   } catch (e) { if (body) body.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; }
   finally { if (btn) btn.disabled = false; }
 }
@@ -200,7 +212,7 @@ async function distAB() {
   const el = $('distAB');
   el.innerHTML = '<div class="loading">กำลังสร้างมุมที่สองเพื่อเทียบ...</div>';
   try {
-    const r = await fetch('/api/content-distribution', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: current, categoryCode: distCatCode(), angle: other }) }).then(r => r.json());
+    const r = await distPost('/api/content-distribution', { product: current, categoryCode: distCatCode(), angle: other });
     if (!r.plan) throw new Error(r.error || '');
     st.ab = { angle: other, plan: r.plan };
     const A = st.plan ? 'ปัจจุบัน (' + st.angle + ')' : '—';
@@ -215,11 +227,9 @@ function distUseAB(which) {
 }
 function renderDistPublishing() {
   const el = $('distBody');
-  el.innerHTML = `<div class="box"><div class="box-title"><h3>📅 Publishing</h3></div><div id="distCal"></div></div>
+  el.innerHTML = `<div class="box"><div class="box-title"><h3>📅 Publishing</h3></div><div id="distCal"><div id="calWrap"></div><div id="calSheet" style="margin-top:10px"></div></div></div>
   <div class="box"><div class="box-title"><h3>🔌 n8n</h3></div><div style="font-size:12px">Webhook: <code>${esc(typeof n8nWebhookBase === 'function' ? n8nWebhookBase() : '')}</code></div></div>`;
   try {
-    const cal = $('distCal');
-    const tmp = document.createElement('div'); tmp.id = 'adTabBody'; cal.appendChild(tmp);
     renderCalendar();
   } catch (e) { $('distCal').innerHTML = 'เปิด calendar ไม่สำเร็จ'; }
 }
@@ -248,7 +258,7 @@ async function pubTab(t) {
   const el = $('pubTabBody');
   if (!el) return;
   if (t === 'cal') {
-    el.innerHTML = '<div id="adTabBody"></div>';
+    el.innerHTML = '<div id="calWrap"></div><div id="calSheet" style="margin-top:10px"></div>';
     try { renderCalendar(); } catch (e) { el.innerHTML = 'เปิด calendar ไม่สำเร็จ'; }
     el.innerHTML += `<div class="box" style="margin-top:10px"><div class="box-title"><h3>Automation (n8n)</h3></div><div style="font-size:12px">Webhook: <code>${esc(typeof n8nWebhookBase === 'function' ? n8nWebhookBase() : '')}</code></div></div>`;
     return;
@@ -265,15 +275,15 @@ async function pubTab(t) {
     }
     const s = d.jobs_by_status || {};
     const attn = d.attention || [];
-    el.innerHTML = `<div style="font-size:13px;margin-bottom:8px">พร้อมลง: <b>${(s.QC_PASSED || 0) + (s.READY_TO_PUBLISH || 0)}</b> · กำลังทำ: <b>${s.IN_PROGRESS || 0}</b> · ต้องดู: <b>${attn.length}</b></div>`
-      + (attn.map(a => `<div style="font-size:12px;padding:6px 4px;border-bottom:1px solid #1c2430">⚠ ${esc(a.product_code || '')} ${esc(a.v_code || '')} · ${esc(a.status || '')} <button class="secondary" style="font-size:11px;padding:2px 8px" onclick="pubOpenProduct('${esc(a.product_code || '')}')">เปิด</button></div>`).join('') || '<div class="empty-state">คิวว่าง</div>');
+    let rows = attn.map(a => `<div style="font-size:12px;padding:6px 4px;border-bottom:1px solid #1c2430">⚠ ${esc(a.product_code || '')} ${esc(a.v_code || '')} · ${esc(a.status || '')} <button class="secondary" style="font-size:11px;padding:2px 8px" onclick="pubOpenProduct('${esc(a.product_code || '')}')">เปิด</button></div>`).join('');
+    if (!rows) {
+      const nx = await fetch('/api/next?limit=10').then(r => r.json()).catch(() => []);
+      rows = (nx || []).map(n => `<div style="font-size:12px;padding:6px 4px;border-bottom:1px solid #1c2430">○ ${esc(n.product_code || '')} · ${esc(n.product_name_th || n.product_name_en || '')} <button class="secondary" style="font-size:11px;padding:2px 8px" onclick="pubOpenProduct('${esc(n.product_code || '')}')">เปิด</button></div>`).join('') || '<div class="empty-state">คิวว่าง</div>';
+    }
+    el.innerHTML = `<div style="font-size:13px;margin-bottom:8px">พร้อมลง: <b>${(s.QC_PASSED || 0) + (s.READY_TO_PUBLISH || 0)}</b> · กำลังทำ: <b>${s.IN_PROGRESS || 0}</b> · ต้องดู: <b>${attn.length}</b></div>` + rows;
   } catch (e) { el.innerHTML = `<div class="error">${esc(e.message || '')}</div>`; }
 }
 async function pubOpenProduct(code) {
   if (!code) return;
-  setMode('product');
-  $('search').value = code;
-  await loadProducts();
-  const btn = document.querySelector('#products .item:not(.load-more)');
-  if (btn && items.length) selectProduct(0, btn);
+  location.href = 'index.html?code=' + encodeURIComponent(code);
 }

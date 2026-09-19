@@ -1,0 +1,61 @@
+/* WDI Studio — Shared base (imported by all pages via Tailwind config) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap');
+
+:root {
+  --gold: #e8b84d;
+  --gold-dim: #c99a32;
+  --bg: #07090d;
+  --surface: #0d1219;
+  --surface2: #111822;
+  --border: rgba(255,255,255,.08);
+  --border2: rgba(255,255,255,.14);
+  --text: #f4f7fb;
+  --muted: #8d99aa;
+  --ok: #55d6a2;
+  --danger: #f18b8b;
+  --info: #6ea8ff;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--bg); scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: Inter, 'IBM Plex Sans Thai', system-ui, sans-serif;
+  background:
+    radial-gradient(900px 500px at 70% -8%, rgba(110,168,255,.09), transparent 60%),
+    radial-gradient(700px 500px at 5% 60%,  rgba(232,184,77,.06), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+/* Subtle grid overlay */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  opacity: .18;
+  background-image:
+    linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(to bottom, #000, transparent 75%);
+}
+::selection { background: #e8b84d44; }
+a { color: var(--gold); text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 6px; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: #2a3446; border-radius: 10px; }
+
+/* Shared spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+@keyframes pulse { 50% { opacity:.55; } }
+@keyframes shimmer { to { transform: translateX(100%); } }
+
+.anim-up { animation: fadeUp .22s ease both; }
+.spin { animation: spin .8s linear infinite; }

@@ -57,7 +57,7 @@ async function loadAdvBox() {
   if (!el) return;
   try {
     const caps = await getFlowCaps();
-    const st = providerNote();
+    const st = await providerNote();
     el.innerHTML = `models: ${Object.keys(caps.models || {}).join(', ')}<br>provider: ${st}`;
   } catch { el.innerHTML = 'โหลด capabilities ไม่สำเร็จ'; }
 }
@@ -66,7 +66,8 @@ async function providerNote() {
   if (_provNote) return _provNote;
   try {
     const s = await fetch('/api/image/status').then(r => r.json());
-    _provNote = `${s.label || s.provider} — ${s.configured ? 'พร้อม' : 'NOT CONFIGURED'}` + (s.textOnly ? ' (text-only: refs เป็นข้อความ ไม่ใช่พิกเซล)' : '');
+    const demo = ((s || {}).providers || {}).pollinations || {};
+    _provNote = `${demo.label || s.defaultProvider || 'demo'} — ${demo.usable === false ? 'NOT CONFIGURED' : 'พร้อม'}` + (demo.textOnly ? ' (text-only: refs เป็นข้อความ ไม่ใช่พิกเซล)' : '');
   } catch { _provNote = 'unreachable'; }
   return _provNote;
 }

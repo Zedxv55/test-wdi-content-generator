@@ -92,7 +92,7 @@ function newBoardUI() {
   el.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
   <input id="nbName" placeholder="ชื่อบอร์ด (ถ้ามี)" style="flex:2;min-width:160px;min-height:38px;padding:8px 10px;border:1px solid #303744;border-radius:9px;background:#0a0e15;color:#fff">
   <select id="nbSecs" aria-label="ความยาวรวม">${['15s', '30s', '45s', '60s'].map(x => `<option${x === '30s' ? ' selected' : ''}>${x}</option>`).join('')}</select>
-  <select id="nbModel" aria-label="โมเดล"><option value="gemini-omni-flash">Gemini Omni Flash</option><option value="veo-3.1-fast">Veo 3.1 Fast</option><option value="veo-3.1-quality">Veo 3.1 Quality</option></select>
+  <select id="nbModel" aria-label="โมเดล"><option value="gemini-omni-flash-1.1">Gemini Omni Flash 1.1</option><option value="veo-3.1">Veo 3.1</option></select>
   <button class="generate" onclick="newBoard()">สร้างบอร์ด + ฉาก</button></div>`;
 }
 async function newBoard() {
@@ -124,7 +124,8 @@ async function openBoard(id) {
       return `<button onclick="pickScene(${s.id})" style="flex:none;width:150px;text-align:left;background:#0e141d;border:1px solid ${s.id === window._img.sceneDbId ? '#ffd76a' : '#2b3441'};border-radius:12px;padding:8px;cursor:pointer;color:#fff">
       <b style="font-size:12px">${esc(s.scene_id)} · ${s.duration_secs}s</b><br>
       <small style="opacity:.7">${esc((s.purpose || '').slice(0, 40))}</small><br>
-      <small style="opacity:.7">${cur ? `v${cur.version} ${cur.status}` : '○ ยังไม่เจน'}</small></button>`;
+      <small style="opacity:.7">${cur ? `v${cur.version} ${cur.status}` : '○ ยังไม่เจน'}</small></button>
+      <button class="secondary" style="flex:none;align-self:center;font-size:11px;padding:4px 8px" onclick="event.stopPropagation();openSceneEditor(${s.id})" title="แก้ไขฉาก">✏️</button>`;
     }).join('') + `</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="secondary" onclick="addSceneUI()">+ เพิ่มฉาก</button></div>
     <div class="tl-timeline">` + b.scenes.map(s => `<div class="tl-seg"><b>${esc(s.scene_id)} · ${s.duration_secs}s</b><span>${esc((s.purpose || '').slice(0, 30))}</span><div class="tl-bar"><i></i></div></div>`).join('') + `</div>`;
@@ -141,9 +142,10 @@ async function addSceneUI() {
 }
 // ---------- scene editor drawer ----------
 async function openSceneEditor(dbId) {
-  const m = $('sceneDrawer'), b = $('sceneBody');
+  const m = $('sceneDrawer'), b = $('sceneBody'), sc0 = $('sceneScrim');
   if (!m || !b) return;
   m.classList.add('open');
+  if (sc0) sc0.classList.add('on');
   b.innerHTML = '<div class="loading">กำลังโหลด...</div>';
   try {
     const board = window._img.board;
